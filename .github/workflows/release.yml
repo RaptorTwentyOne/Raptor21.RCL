@@ -1,14 +1,12 @@
 name: Release
 
-# Tag-driven: `git tag v0.1.0 && git push --tags` publishes 0.1.0. The tag is the single source of the
-# version, so the number in the csproj never has to be kept in sync by hand — and a package can never be
-# published from a commit that was not tagged for it.
 on:
   push:
     tags: ['v*.*.*']
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   publish:
@@ -42,12 +40,16 @@ jobs:
           dotnet pack Raptor21.slnx -c Release --no-build -o artifacts
           -p:Version=${{ steps.version.outputs.value }}
 
-      # --skip-duplicate so re-running a failed release job is safe: a version already on nuget.org is
-      # left alone instead of failing the run. nuget.org never allows overwriting a published version.
+      - name: Authenticate to NuGet (Trusted Publishing)
+        uses: NuGet/login@v1
+        id: nuget-login
+        with:
+          user: ${{ vars.NUGET_USER }}
+
       - name: Push to NuGet
         run: >
           dotnet nuget push "artifacts/*.nupkg"
-          --api-key ${{ secrets.NUGET_API_KEY }}
+          --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
           --source https://api.nuget.org/v3/index.json
           --skip-duplicate
 
