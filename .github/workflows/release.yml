@@ -65,3 +65,7 @@ jobs:
             artifacts/*.nupkg
             artifacts/*.snupkg
           generate_release_notes: true
+          # SemVer says a hyphen opens the pre-release field, so v1.2.3-preview.1 is a pre-release and
+          # v1.2.3 is not. The action does not infer this from the tag, and an unmarked pre-release shows
+          # up as "Latest" on the repository's front page — which is the version people then install.
+          prerelease: ${{ contains(github.ref_name, '-') }}
