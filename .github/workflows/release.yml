@@ -12,6 +12,11 @@ jobs:
   publish:
     runs-on: ubuntu-latest
 
+    # Required by the nuget.org trusted-publishing policy, which will not mint a token for a job that runs
+    # outside the environment it names. It is also the boundary worth having: publishing is the one step
+    # here that cannot be undone, so it belongs somewhere approval rules can be attached.
+    environment: production
+
     steps:
       - uses: actions/checkout@v4
 
