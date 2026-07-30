@@ -1,0 +1,27 @@
+@using Microsoft.Extensions.Options
+@inject RaptorAssetStore Store
+@inject IOptions<RaptorOptions> Options
+
+@if (_src is not null)
+{
+    <script type="module" src="@_src" data-raptor21 data-raptor-htmx-mode="@_mode" data-raptor-htmx="@_htmx"></script>
+}
+
+@code {
+    private string? _src;
+    private string? _htmx;
+    private string? _mode;
+
+    protected override void OnInitialized()
+    {
+        var o = Options.Value;
+        if (!o.InjectAssets || !Store.HasAssets) return;
+        if (Store.FileName("raptor.js") is not { } file) return;
+
+        _src = $"{o.RoutePrefix}/{file}";
+        _mode = o.Htmx.ToString().ToLowerInvariant();
+        _htmx = o.Htmx is HtmxDelivery.Never ? null
+            : Store.FileName("htmx.js") is { } htmx ? $"{o.RoutePrefix}/{htmx}" : null;
+    }
+
+}

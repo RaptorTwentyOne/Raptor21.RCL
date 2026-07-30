@@ -1,0 +1,39 @@
+@using Raptor21.RCL.Localization
+@inject IRaptorLocalizer L
+
+<RaptorDropdown Menu="true" Placement="@Placement" TriggerClass="rg-actions-trigger" Class="@RootClass">
+    <Trigger>
+        <svg class="rg-actions-ico" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="5" r="2" fill="currentColor"/>
+            <circle cx="12" cy="12" r="2" fill="currentColor"/>
+            <circle cx="12" cy="19" r="2" fill="currentColor"/>
+        </svg>
+        <span class="rg-sr-only">@EffectiveLabel</span>
+    </Trigger>
+    <ChildContent>
+        @ChildContent
+    </ChildContent>
+</RaptorDropdown>
+
+@code {
+
+    /// <summary>The panel content — action items, each carrying <c>data-rg-dropdown-item</c>.</summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Preferred side the panel opens toward — defaults to opening outward/downward.</summary>
+    [Parameter]
+    public string Placement { get; set; } = "bottom-end";
+
+    /// <summary>Accessible name for the icon-only trigger button.</summary>
+    [Parameter]
+    public string? Label { get; set; }
+
+    /// <summary>Extra classes on the dropdown root, appended after the default <c>rg-actions</c>.</summary>
+    [Parameter]
+    public string? Class { get; set; }
+
+    private string EffectiveLabel => string.IsNullOrWhiteSpace(Label) ? "Actions" : Label;
+    private string RootClass => string.IsNullOrWhiteSpace(Class) ? "rg-actions" : $"rg-actions {Class}";
+
+}

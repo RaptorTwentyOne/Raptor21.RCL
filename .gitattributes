@@ -1,0 +1,32 @@
+# Normalise to LF in the repository.
+#
+# Not cosmetic: CI runs on ubuntu-latest and re-builds the client bundle from Client/src, then fails the
+# run if `git status` reports wwwroot/dist as modified. Without this, a bundle committed from Windows is
+# stored with CRLF, the Linux rebuild emits LF, every dist file reads as changed and that check can never
+# pass. Normalising here makes the comparison test content instead of platform.
+* text=auto eol=lf
+
+# Windows-only tooling that must keep CRLF.
+*.sln text eol=crlf
+*.slnx text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary — never touch, never diff.
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.dll binary
+*.snk binary
+*.nupkg binary
+*.snupkg binary
+
+# Generated bundle. Kept in the repo so a .NET-only consumer can build without Node, but there is nothing
+# to review in a minified diff — this keeps it out of the way on GitHub and in `git diff`.
+src/Raptor21.RCL/wwwroot/dist/** linguist-generated=true -diff

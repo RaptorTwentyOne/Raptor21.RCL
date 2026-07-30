@@ -1,0 +1,51 @@
+:root {
+
+    --rg-bg: var(--sp-surface, #fff);              /* row / body surface */
+    --rg-header-bg: var(--sp-header-bg, #fafafb);    /* header + toolbar surface */
+    --rg-surface: var(--sp-surface-2, #f5f5f6);      /* popups, drawers — twice the header's distance from the base */
+    --rg-fg: var(--sp-fg, #181d1f);
+    --rg-muted: var(--sp-fg-muted, rgba(24,29,31,.60));
+    --rg-border: var(--sp-border, rgba(24,29,31,.15));
+    --rg-border-soft: var(--sp-border-soft, rgba(24,29,31,.07));   /* vertical separators, quieter than the row rule */
+    --rg-hover: var(--sp-hover, rgba(33,150,243,.10));
+    --rg-sel: var(--sp-sel, rgba(33,150,243,.30));
+    --rg-accent: var(--sp-accent, #2196f3);
+    --rg-input-bg: var(--sp-input-bg, #fff);
+    --rg-input-border: var(--sp-input-border, rgba(24,29,31,.20));
+    --rg-danger-fg: var(--sp-danger-fg, #b91c1c);
+    --rg-danger-bg: var(--sp-danger-bg, rgba(220,38,38,.10));
+    --rg-danger-border: var(--sp-danger-border, rgba(220,38,38,.35));
+    --rg-danger: var(--sp-danger, #dc2626);       /* solid fill for a destructive button */
+    --rg-success: var(--sp-success, #16a34a);      /* solid fill for a confirming button */
+    --rg-warning: var(--sp-warning, #d97706);      /* solid fill for a cautioning button */
+    /* Text/surface trio for a cautioning PANEL, the same three roles --rg-danger-fg/-bg/-border model.
+       Separate from --rg-warning above, which is a solid button fill and takes a different value on the
+       dark theme. */
+    --rg-warning-fg: var(--sp-warning-fg, #854d0e);
+    --rg-warning-bg: var(--sp-warning-bg, rgba(217,119,6,.10));
+    --rg-warning-border: var(--sp-warning-border, rgba(217,119,6,.35));
+    --rg-info: var(--sp-info, #0891b2);         /* solid fill for an informational button */
+    /* Glyph colours for the built-in boolean cell renderer (`rg-ico-check rg-ok` / `rg-ico-close rg-bad`).
+       Text-on-surface colours, the role --rg-danger-fg models — not aliases of --rg-success / --rg-danger,
+       which are solid button fills and take different values on the dark theme. Both themes carry the same
+       value here. */
+    --rg-ok-fg: var(--sp-ok-fg, #16a34a);
+    --rg-bad-fg: var(--sp-bad-fg, #dc2626);
+    /* Depth cue for a pinned column floating over scrolled content — an elevation, not a separator.
+       No host token for this one. */
+    --rg-pin-elevation-left: 6px 0 6px -4px rgba(0,0,0,.18);
+    --rg-pin-elevation-right: -6px 0 6px -4px rgba(0,0,0,.18);
+
+    /* Chart neutrals — axis text and grid rules.
+     *
+     * Hex, and their own tokens rather than aliases of --rg-muted / --rg-border, for two reasons.
+     * (1) FORMAT: those two are rgba(), and the charting library parses colours with its own regex; a
+     *     value it cannot read makes it return null and then throw mid-render, so the chart draws its
+     *     series and stops before the first axis label.
+     * (2) ALPHA: flattening rgba(24,29,31,.60) to hex darkens axis text well past the mid-grey the charts
+     *     use.
+     *
+     * A host that wants its own can set --sp-chart-label / --sp-chart-grid, same as every token here. */
+    --rg-chart-label: var(--sp-chart-label, #8c9097);
+    --rg-chart-grid: var(--sp-chart-grid, #f1f1f1);
+}

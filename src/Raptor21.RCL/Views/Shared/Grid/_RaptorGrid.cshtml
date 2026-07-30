@@ -1,0 +1,271 @@
+@using System.Globalization
+@using Raptor21.RCL.Grid
+@model GridViewModel
+@{
+    var formId = $"{Model.GridId}-form";
+    var regionId = $"{Model.GridId}-region";
+
+    string AlignClass(string? align) => align switch
+    {
+        "center" => "rg-al-center",
+        "right" => "rg-al-right",
+        _ => "rg-al-left"
+    };
+
+    bool HasPopup(GridColumnView c) =>
+        c.Filter is GridFilterType.Text or GridFilterType.Number or GridFilterType.Date
+        || (c.Filter == GridFilterType.Set && c.SetOptions is { Count: > 0 });
+    var popupColumns = Model.Columns.Where(HasPopup).ToList();
+    var tableMinWidth = Model.Columns.Sum(c => c.MinWidth ?? c.Width ?? 130) + (Model.Selectable ? 44 : 0) + (Model.HasDetail ? 40 : 0);
+}
+
+<div id="@regionId" data-rg-component="grid" class="raptor-grid@(Model.HasCards ? " rg-has-cards" : "")@(Model.Compact ? " rg-compact" : "")" data-grid-id="@Model.GridId" data-rg-virtual="@Model.VirtualScroll.ToString().ToLowerInvariant()" data-rg-total="@Model.TotalCount" data-rg-cell-endpoint="@Model.CellUrl">
+    <form id="@formId"
+          class="rg-form"
+          hx-post="@Model.Endpoint"
+          hx-target="#@regionId"
+          hx-swap="outerHTML"
+          hx-include="@(string.IsNullOrWhiteSpace(Model.Include) ? $"#{formId}" : $"#{formId}, {Model.Include}")"
+          hx-sync="closest form:replace"
+          hx-trigger="@(Model.Deferred ? "load, raptor:refresh" : "raptor:refresh")"
+          autocomplete="off">
+
+        <input type="hidden" name="page" value="@Model.State.Page" />
+        <input type="hidden" name="sort" value="@(Model.SortField ?? string.Empty)" />
+        <input type="hidden" name="dir" value="@Model.SortDir" />
+        <input type="hidden" name="colOrder" value="@Model.ColumnOrderCsv" />
+        @foreach (var kv in Model.State.Params)
+        {
+            <input type="hidden" name="ctx_@kv.Key" value="@kv.Value" />
+        }
+
+        @if (Model.Selectable)
+        {
+            <div class="rg-selbar" data-rg-selbar hidden>
+                <span class="rg-selbar-count" data-rg-selcount>0 selected</span>
+                <button type="button" class="rg-selbar-clear" data-rg-selclear>Clear selection</button>
+            </div>
+        }
+
+        <div id="@(Model.GridId)-scroll" class="rg-scrollwrap">
+            <table style="min-width:@(tableMinWidth)px">
+                <colgroup>
+                    @if (Model.HasDetail)
+                    {
+                        <col class="rg-col-expand" />
+                    }
+                    @if (Model.Selectable)
+                    {
+                        <col class="rg-col-sel" />
+                    }
+                    @foreach (var col in Model.Columns)
+                    {
+                        var min = col.MinWidth ?? 80;
+                        var initial = col.Width ?? (col.Flex is { } f ? Math.Max(f * 140, min) : Math.Max(160, min));
+                        <col data-rg-col="@col.Key" data-rg-min="@min"
+                             data-rg-w="@(col.Width?.ToString() ?? "")"
+                             data-rg-flex="@(col.Width is null ? (col.Flex ?? 1).ToString() : "")"
+                             data-rg-pinned="@(col.Pinned ?? "")"
+                             style="width:@(initial)px" />
+                    }
+                </colgroup>
+                <thead>
+                    @{
+                        var leadRowSpan = Model.HasColumnGroups ? 2 : 1;
+                    }
+                    <tr class="rg-head@(Model.HasColumnGroups ? " rg-grouprow" : "")">
+                        @if (Model.HasDetail)
+                        {
+                            <th class="rg-expand-cell" aria-hidden="true" rowspan="@(leadRowSpan > 1 ? "2" : null)"></th>
+                        }
+                        @if (Model.Selectable)
+                        {
+                            <th class="rg-sel-cell" rowspan="@(leadRowSpan > 1 ? "2" : null)"><input type="checkbox" class="rg-sel-all" aria-label="Select all on this page" /></th>
+                        }
+                        @if (!Model.HasColumnGroups)
+                        {
+                            @foreach (var col in Model.Columns)
+                            {
+                                @await Html.PartialAsync("Grid/_RaptorGridHeaderCell", (Model, col, 1))
+                            }
+                        }
+                        else
+                        {
+                            @for (var i = 0; i < Model.Columns.Count;)
+                            {
+                                var col = Model.Columns[i];
+                                if (string.IsNullOrEmpty(col.Group))
+                                {
+                                    @await Html.PartialAsync("Grid/_RaptorGridHeaderCell", (Model, col, 2))
+                                    i++;
+                                }
+                                else
+                                {
+                                    var j = i;
+                                    while (j < Model.Columns.Count && Model.Columns[j].Group == col.Group) j++;
+                                    <th class="rg-group" colspan="@(j - i)">@col.Group</th>
+                                    i = j;
+                                }
+                            }
+                        }
+                    </tr>
+                    @if (Model.HasColumnGroups)
+                    {
+                        <tr class="rg-head rg-leafrow">
+                            @foreach (var col in Model.Columns.Where(c => !string.IsNullOrEmpty(c.Group)))
+                            {
+                                @await Html.PartialAsync("Grid/_RaptorGridHeaderCell", (Model, col, 1))
+                            }
+                        </tr>
+                    }
+                </thead>
+                <tbody>
+                    @if (Model.Deferred)
+                    {
+                        <tr>
+                            <td colspan="@Model.SpanColumns" class="rg-empty">
+                                <span class="rg-ico rg-ico-spinner rg-ico-spin rg-spin-lg" aria-hidden="true"></span>
+                                <div class="rg-empty-hint">Loading…</div>
+                            </td>
+                        </tr>
+                    }
+                    else if (Model.Rows.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="@Model.SpanColumns" class="rg-empty">
+                                <span class="rg-ico rg-ico-empty rg-empty-icon"></span>
+                                <div class="rg-empty-title">No records found</div>
+                                <div class="rg-empty-hint">@(Model.HasActiveFilters ? "No rows match the current filters." : "Nothing to show here.")</div>
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        foreach (var row in Model.Rows)
+                        {
+                            @await Html.PartialAsync("Grid/_RaptorGridRow", new GridRowViewModel
+                            {
+                                GridId = Model.GridId,
+                                Columns = Model.Columns,
+                                Row = row,
+                                Selectable = Model.Selectable,
+                                CanEdit = Model.CanEdit,
+                                HasDetail = Model.HasDetail,
+                                DetailUrl = Model.DetailUrl
+                            })
+                        }
+                    }
+                    @if (Model.VirtualScroll && Model.HasMore)
+                    {
+                        @await Html.PartialAsync("Grid/_RaptorGridSentinel", Model)
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @if (popupColumns.Count > 0)
+        {
+            var activeFilters = Model.FilterValues.Keys.Concat(Model.SetSelections.Keys).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+            <button type="button" class="rg-filter-fab" data-rg-filter-open aria-label="Open filters">
+                <span class="rg-ico rg-ico-filter"></span><span>Filter</span>@if (activeFilters > 0) { <span class="rg-filter-count">@activeFilters</span> }
+            </button>
+            <div class="rg-filter-backdrop" data-rg-filter-close></div>
+            <div class="rg-filter-drawer">
+                <div class="rg-filter-head"><span>Filters</span><button type="button" class="rg-filter-x" data-rg-filter-close aria-label="Close filters"><span class="rg-ico rg-ico-close"></span></button></div>
+                <div class="rg-filter-body">
+        @foreach (var col in popupColumns)
+        {
+            <div class="rg-pop" id="@(Model.GridId)-pop-@col.Key" data-rg-pop="@col.Key" hx-preserve="true">
+                <div class="rg-pop-label">@col.Header</div>
+                @if (col.Filter == GridFilterType.Set)
+                {
+                    var selected = Model.SetSelections.TryGetValue(col.Key, out var sel) ? sel : [];
+                    <div class="rg-pop-set">
+                        @foreach (var option in col.SetOptions!)
+                        {
+                            <label class="rg-pop-check">
+                                <input type="checkbox" name="fs_@col.Key" value="@option.Value" checked="@(selected.Contains(option.Value))"
+                                       hx-post="@Model.Endpoint" hx-trigger="change" hx-vals='{"page":"1"}' />
+                                <span>@option.Label</span>
+                            </label>
+                        }
+                    </div>
+                }
+                else
+                {
+                    var val = Model.FilterValues.TryGetValue(col.Key, out var fv) ? fv : string.Empty;
+                    var curOp = Model.FilterOps.TryGetValue(col.Key, out var op) ? op : GridFilterOps.DefaultKey(col.Filter);
+                    var inputType = col.Filter == GridFilterType.Number ? "number" : col.Filter == GridFilterType.Date ? "date" : "text";
+                    <select name="fop_@col.Key" class="rg-pop-op"
+                            hx-post="@Model.Endpoint" hx-trigger="change" hx-vals='{"page":"1"}'>
+                        @foreach (var (key, label) in GridFilterOps.Options(col.Filter))
+                        {
+                            <option value="@key" selected="@(key == curOp)">@label</option>
+                        }
+                    </select>
+                    <input name="f_@col.Key" type="@inputType" value="@val" class="rg-pop-input" placeholder="Filter…" autocomplete="off"
+                           hx-post="@Model.Endpoint" hx-trigger="@(col.Filter == GridFilterType.Date ? "change" : "input changed delay:400ms")" hx-vals='{"page":"1"}' />
+                }
+                <div class="rg-pop-actions">
+                    <button type="button" class="rg-pop-clear" data-rg-clear="@col.Key">Clear filter</button>
+                </div>
+            </div>
+        }
+                </div>
+                <div class="rg-filter-actions">
+                    <button type="button" class="rg-pop-clear" data-rg-filter-clearall>Clear all</button>
+                    <button type="button" class="rg-nav rg-filter-done" data-rg-filter-close>Done</button>
+                </div>
+            </div>
+        }
+
+        @{
+            var from = Model.FirstRowNumber;
+            var to = Model.LastRowNumber;
+            var pageNo = Model.State.Page;
+            var totalPages = Model.TotalPages == 0 ? 1 : Model.TotalPages;
+            var prevDisabled = pageNo <= 1;
+            var nextDisabled = pageNo >= totalPages;
+        }
+        <div class="rg-foot">
+            <div class="rg-foot-cell">
+                <span>@(Model.VirtualScroll ? "Rows per block:" : "Page Size:")</span>
+                <select name="pageSize" class="rg-select" hx-post="@Model.Endpoint" hx-trigger="change" hx-vals='{"page":"1"}'>
+                    @foreach (var size in Model.PageSizeOptions)
+                    {
+                        <option value="@size" selected="@(size == Model.State.PageSize)">@size</option>
+                    }
+                </select>
+            </div>
+
+            @if (Model.VirtualScroll)
+            {
+                <span class="rg-nums" data-rg-loaded>Loaded @(Model.Rows.Count.ToString("N0", CultureInfo.InvariantCulture)) of @(Model.TotalCount.ToString("N0", CultureInfo.InvariantCulture))</span>
+            }
+            else
+            {
+                <span class="rg-nums">@(from.ToString("N0", CultureInfo.InvariantCulture)) to @(to.ToString("N0", CultureInfo.InvariantCulture)) of @(Model.TotalCount.ToString("N0", CultureInfo.InvariantCulture))</span>
+
+                <div class="rg-pager">
+                    <button type="button" class="rg-nav" title="First page" disabled="@prevDisabled"
+                            hx-post="@Model.Endpoint" hx-vals='{"page":"1"}'>
+                        <span class="rg-ico rg-ico-first"></span>
+                    </button>
+                    <button type="button" class="rg-nav" title="Previous page" disabled="@prevDisabled"
+                            hx-post="@Model.Endpoint" hx-vals="@($"{{\"page\":\"{pageNo - 1}\"}}")">
+                        <span class="rg-ico rg-ico-prev"></span>
+                    </button>
+                    <span class="rg-nums rg-pageinfo">Page @(pageNo.ToString("N0", CultureInfo.InvariantCulture)) of @(totalPages.ToString("N0", CultureInfo.InvariantCulture))</span>
+                    <button type="button" class="rg-nav" title="Next page" disabled="@nextDisabled"
+                            hx-post="@Model.Endpoint" hx-vals="@($"{{\"page\":\"{pageNo + 1}\"}}")">
+                        <span class="rg-ico rg-ico-next"></span>
+                    </button>
+                    <button type="button" class="rg-nav" title="Last page" disabled="@nextDisabled"
+                            hx-post="@Model.Endpoint" hx-vals="@($"{{\"page\":\"{totalPages}\"}}")">
+                        <span class="rg-ico rg-ico-last"></span>
+                    </button>
+                </div>
+            }
+        </div>
+    </form>
+</div>

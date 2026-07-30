@@ -1,0 +1,28 @@
+@namespace Raptor21.RCL.Layout
+
+<div id="@Id" class="@Class" @attributes="AdditionalAttributes">
+    @ChildContent
+</div>
+
+@code {
+
+    /// <summary>The element id boosted navigations swap. Defaults to <c>app-root</c>, which is what the
+    /// bundled client recognises as a whole-page swap; change it only if the host's own htmx swap
+    /// scoping is changed to match.</summary>
+    [Parameter]
+    public string Id { get; set; } = "app-root";
+
+    /// <summary>Classes for the wrapper. Nothing is emitted when unset — the element is addressed by
+    /// its id, so consumers get a bare <c>&lt;div id="app-root"&gt;</c> unless they ask for more.</summary>
+    [Parameter]
+    public string? Class { get; set; }
+
+    /// <summary>The layout's own frame and content.</summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Splatted onto the wrapper.</summary>
+    [Parameter(CaptureUnmatchedValues = true)]
+    public IReadOnlyDictionary<string, object?>? AdditionalAttributes { get; set; }
+
+}

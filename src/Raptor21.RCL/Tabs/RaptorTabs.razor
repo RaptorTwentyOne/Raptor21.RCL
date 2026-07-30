@@ -1,0 +1,23 @@
+@namespace Raptor21.RCL.Tabs
+
+<CascadingValue TValue="RaptorTabsCollector" Value="_collector" IsFixed="true">
+    @ChildContent
+    <RaptorTabsView Class="@Class" Id="@Id"/>
+</CascadingValue>
+
+@code {
+
+    /// <summary>The &lt;RaptorTab&gt; children.</summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Extra classes on the tabs root.</summary>
+    [Parameter]
+    public string? Class { get; set; }
+
+    /// <summary>Stable id prefix for the panels (set it when a page has more than one tab set).</summary>
+    [Parameter]
+    public string? Id { get; set; }
+
+    private readonly RaptorTabsCollector _collector = new();
+}

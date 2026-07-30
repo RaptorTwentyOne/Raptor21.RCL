@@ -1,0 +1,126 @@
+@using Raptor21.RCL.Charts.Models
+@using Raptor21.RCL.States
+@using Raptor21.RCL.Localization
+@inject IRaptorLocalizer L
+
+<div class="rg-chart @Class" id="@Id" data-rg-component="chart" data-rg-state-host="@Current.Wire()" data-rg-culture="@CultureAttribute" @attributes="AdditionalAttributes">
+    <div class="rg-chart__canvas" data-rg-chart-canvas style="@CanvasStyle" hidden="@(Current != RaptorState.Content)">
+        @ChildContent
+    </div>
+
+    @if (Loading is not null)
+    {
+        <div class="rg-chart__state" data-rg-state="loading" hidden="@(Current != RaptorState.Loading)">@Loading</div>
+    }
+    @if (Empty is not null)
+    {
+        <div class="rg-chart__state" data-rg-state="empty" hidden="@(Current != RaptorState.Empty)">@Empty</div>
+    }
+    @if (Error is not null)
+    {
+        <div class="rg-chart__state" data-rg-state="error" hidden="@(Current != RaptorState.Error)">@Error</div>
+    }
+
+    @if (OptionsJson is not null)
+    {
+        <script type="application/json" data-rg-chart-options>@((MarkupString)OptionsJson)</script>
+    }
+</div>
+
+@code {
+
+    /// <summary>
+    /// Element id. Required: it is how a script reaches this chart
+    /// (<c>window.raptorChart(id).render(options)</c>).
+    /// </summary>
+    [Parameter, EditorRequired]
+    public string Id { get; set; } = default!;
+
+    /// <summary>Extra classes on the host element, for sizing and placement.</summary>
+    [Parameter]
+    public string? Class { get; set; }
+
+    /// <summary>
+    /// Minimum height for the drawing box. The charting library measures its container as it renders, so a
+    /// container that is zero-high at that moment draws a zero-high chart; a height set up front also keeps
+    /// the box from collapsing while the data is in flight.
+    /// </summary>
+    [Parameter]
+    public string? Height { get; set; }
+
+    /// <summary>Painted inside the drawing box until the first render replaces it (a skeleton, usually).</summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Which state the chart starts in, decided on the server.
+    /// <para>
+    /// Left null, a chart with a <see cref="Loading"/> slot starts in that state and any other starts on the
+    /// canvas. Set it when the server already knows the outcome — a section that resolved to no data can
+    /// start in <see cref="RaptorState.Empty"/> or <see cref="RaptorState.Error"/> rather than paint a
+    /// skeleton and wait for a script that may never run.
+    /// </para>
+    /// <para>The client can still switch afterwards; this only decides the first paint.</para>
+    /// </summary>
+    [Parameter]
+    public RaptorState? State { get; set; }
+
+    /// <summary>Shown while the chart has not drawn yet. Supplying it makes <see cref="RaptorState.Loading"/>
+    /// the default first paint.</summary>
+    [Parameter] public RenderFragment? Loading { get; set; }
+
+    /// <summary>Shown instead of the canvas when the series resolved to no data.</summary>
+    [Parameter] public RenderFragment? Empty { get; set; }
+
+    /// <summary>Shown instead of the canvas when the chart could not be produced.</summary>
+    [Parameter] public RenderFragment? Error { get; set; }
+
+    /// <summary>
+    /// The chart, authored on the server.
+    /// <para>
+    /// The component serialises it and the client draws it when the element mounts, so the consuming page
+    /// needs no JavaScript of its own. Because mounting is what triggers the draw, the chart is redrawn
+    /// whenever the element is re-inserted into the document.
+    /// </para>
+    /// <para>
+    /// The shape mirrors ApexCharts' own options, so the library's documentation and examples apply
+    /// directly. Callbacks (axis and tooltip formatters) are written as JavaScript source in the string
+    /// properties the model marks for it; they are serialised as <c>{"@@eval": "…"}</c> and compiled on the
+    /// client. Those strings must come from your own code — never from user input — since compiling them is
+    /// executing them.
+    /// </para>
+    /// <para>
+    /// Leave this null to drive the chart imperatively instead
+    /// (<c>window.raptorChart(id).render(options)</c>), which suits charts that need a closure over live
+    /// page state.
+    /// </para>
+    /// </summary>
+    [Parameter]
+    public ApexChartOptions? Options { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public IReadOnlyDictionary<string, object>? AdditionalAttributes { get; set; }
+
+    /// <summary>
+    /// The format culture for client-side formatters, or null when the attribute should be omitted.
+    /// <para>
+    /// The invariant culture's name is the empty string, and a formatter reading <c>data-rg-culture=""</c>
+    /// would hand "" to <c>Intl.NumberFormat</c>, which throws a RangeError. Omitting the attribute lets a
+    /// reader fall back to <c>undefined</c> — the browser's own locale — instead.
+    /// </para>
+    /// </summary>
+    private string? CultureAttribute => string.IsNullOrEmpty(L.FormatCulture.Name) ? null : L.FormatCulture.Name;
+
+    /// <summary>Effective state: the explicit one, or the slot-derived default when none was given.</summary>
+    private RaptorState Current => State ?? (Loading is not null ? RaptorState.Loading : RaptorState.Content);
+
+    private string? CanvasStyle => Height is null ? null : $"min-height:{Height}";
+
+    /// <summary>
+    /// Serialised options, with the resolved culture's day and month names filled in first. Locale values
+    /// the caller supplied are never overwritten.
+    /// </summary>
+    private string? OptionsJson => Options is null
+        ? null
+        : RaptorChartOptions.Serialize(RaptorChartLocale.ApplyCulture(Options, L.UiCulture));
+}

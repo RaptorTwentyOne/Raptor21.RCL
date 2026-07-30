@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # Needed because the build below rebuilds the client bundle from TypeScript rather than trusting the
+      # committed one. The cache key is the lockfile: Client/ is the only npm project in the repo.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/Raptor21.RCL/Client/package-lock.json
+
+      - name: Restore
+        run: dotnet restore Raptor21.slnx
+
+      # RaptorBuildClient=true runs `npm ci && npm run build` in Client/ before compiling, so what CI
+      # verifies is the bundle built FROM SOURCE — not the dist that happens to be committed. That is the
+      # whole point of the flag: a hand-edited or stale dist cannot pass here.
+      - name: Build
+        run: dotnet build Raptor21.slnx -c Release --no-restore -p:RaptorBuildClient=true
+
+      # The committed dist must match what the TypeScript produces. If it does not, a .NET-only consumer
+      # (who builds without Node and therefore uses the committed bundle) gets different behaviour from CI
+      # — the exact drift the committed-dist design has to be defended against.
+      - name: Verify committed bundle is up to date
+        run: |
+          if [ -n "$(git status --porcelain src/Raptor21.RCL/wwwroot/dist)" ]; then
+            echo "::error::wwwroot/dist differs from the bundle built out of Client/src."
+            echo "Run 'npm run build' in src/Raptor21.RCL/Client and commit the result."
+            git --no-pager diff --stat src/Raptor21.RCL/wwwroot/dist
+            exit 1
+          fi
+          echo "dist matches Client/src."
+
+      - name: TypeScript typecheck
+        working-directory: src/Raptor21.RCL/Client
+        run: npm run typecheck
+
+      - name: Pack
+        run: dotnet pack Raptor21.slnx -c Release --no-build -o artifacts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nupkg
+          path: artifacts/*.nupkg

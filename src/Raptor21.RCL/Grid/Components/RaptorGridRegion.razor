@@ -1,0 +1,439 @@
+@using Raptor21.RCL.Localization
+@typeparam TRow
+@using System.Globalization
+@using Microsoft.AspNetCore.Http
+@using Microsoft.Extensions.Primitives
+@using Raptor21.RCL.Grid
+@inherits Raptor21.RCL.Rendering.RaptorSequentialComponent
+@inject RaptorGridBuilder Builder
+@inject IRaptorLocalizer L
+@inject IHttpContextAccessor HttpAccessor
+
+@{
+    var prepared = _prepared;
+}
+@if (prepared is not null)
+{
+    var columns = prepared.Columns;
+    var state = prepared.State;
+    var pageSize = state.PageSize <= 0 ? PageSize : state.PageSize;
+    var totalPages = pageSize == 0 ? 1 : Math.Max(1, (int)Math.Ceiling(prepared.TotalCount / (decimal)pageSize));
+    var sort = state.Sorts.FirstOrDefault();
+    var sortField = sort?.ColumnName;
+    var sortDir = sort?.Direction == GridSortDirection.Descending ? "desc" : "asc";
+    var pageNo = state.Page;
+    var from = prepared.TotalCount == 0 ? 0 : (state.Page - 1) * pageSize + 1;
+    var to = Math.Min(state.Page * pageSize, prepared.TotalCount);
+    var prevDisabled = pageNo <= 1;
+    var nextDisabled = pageNo >= totalPages;
+    var hasDetail = MasterDetail && !string.IsNullOrEmpty(DetailUrl);
+    var hasCards = Card is not null || CardTemplate is not null;
+    var spanCols = columns.Count + (hasDetail ? 1 : 0);
+    var tableMinWidth = columns.Sum(c => c.MinWidth ?? c.Width ?? 130) + (hasDetail ? 40 : 0);
+    var popupColumns = columns.Where(HasPopup).ToList();
+    var formId = $"{Id}-form";
+    var regionId = $"{Id}-region";
+    var gridClass = "raptor-grid" + (hasCards ? " rg-has-cards" : "") + (Compact ? " rg-compact" : "");
+
+    <div id="@regionId" data-rg-component="grid" class="@gridClass"
+         data-grid-id="@Id" data-rg-virtual="false" data-rg-total="@prepared.TotalCount"
+         data-rg-cell-endpoint="@_endpoints.Cell">
+        <form id="@formId"
+              class="rg-form"
+              hx-post="@_endpoints.Region"
+              hx-target="#@regionId"
+              hx-swap="outerHTML"
+              hx-indicator="#@regionId"
+              hx-include="@(string.IsNullOrWhiteSpace(Include) ? $"#{formId}" : $"#{formId}, {Include}")"
+              hx-sync="closest form:replace"
+              hx-trigger="@(_deferred ? "load, raptor:refresh" : "raptor:refresh")"
+              autocomplete="off">
+
+            <input type="hidden" name="page" value="@state.Page"/>
+            <input type="hidden" name="sort" value="@(sortField ?? string.Empty)"/>
+            <input type="hidden" name="dir" value="@sortDir"/>
+            <input type="hidden" name="colOrder" value="@string.Join(",", columns.Where(c => c.Pinned is null).Select(c => c.Key))"/>
+            @foreach (var kv in state.Params)
+            {
+                <input type="hidden" name="ctx_@kv.Key" value="@kv.Value"/>
+            }
+
+            <div id="@(Id)-scroll" class="rg-scrollwrap">
+                <table style="min-width:@(tableMinWidth)px">
+                    <colgroup>
+                        @if (hasDetail)
+                        {
+                            <col class="rg-col-expand"/>
+                        }
+                        @foreach (var col in columns)
+                        {
+                            var min = col.MinWidth ?? 80;
+                            var initial = col.Width ?? (col.Flex is { } f ? Math.Max(f * 140, min) : Math.Max(160, min));
+                            <col data-rg-col="@col.Key" data-rg-min="@min"
+                                 data-rg-w="@(col.Width?.ToString() ?? "")"
+                                 data-rg-flex="@(col.Width is null ? (col.Flex ?? 1).ToString() : "")"
+                                 data-rg-pinned="@(col.Pinned ?? "")"
+                                 style="width:@(initial)px"/>
+                        }
+                    </colgroup>
+                    <thead>
+                    <tr class="rg-head">
+                        @if (hasDetail)
+                        {
+                            <th class="rg-expand-cell" aria-hidden="true"></th>
+                        }
+                        @foreach (var col in columns)
+                        {
+                            var isSorted = string.Equals(col.Key, sortField, StringComparison.OrdinalIgnoreCase);
+                            var nextDir = isSorted && sortDir == "asc" ? "desc" : "asc";
+                            var isActive = _filterValues.ContainsKey(col.Key) || _setSelections.ContainsKey(col.Key);
+                            var reorderable = col.Pinned is null;
+                            var resizable = col.Pinned != "right";
+                            var sortable = col.IsBound && col.Sortable;
+                            var thStyle = col.Width is { } w ? $"width:{w}px" : col.MinWidth is { } mw ? $"min-width:{mw}px" : null;
+                            <th scope="col" data-rg-col="@col.Key"
+                                class="@AlignClass(col.Align ?? (col.Filter == GridFilterType.Number ? "right" : null)) @(reorderable ? "rg-reorder" : null) @col.CssClass"
+                                draggable="@(reorderable ? "true" : "false")"
+                                data-rg-min="@(resizable ? (col.MinWidth ?? 60).ToString() : null)"
+                                style="@thStyle">
+                                <div class="rg-hd">
+                                    @if (sortable)
+                                    {
+                                        <button type="button" class="rg-sort" hx-post="@_endpoints.Region"
+                                                hx-vals="@($"{{\"sort\":\"{col.Key}\",\"dir\":\"{nextDir}\",\"page\":\"1\"}}")">
+                                            <span>@col.Header</span>
+                                            @if (isSorted)
+                                            {
+                                                <span class="rg-ico rg-arrow @(sortDir == "asc" ? "rg-ico-sort-asc" : "rg-ico-sort-desc")"></span>
+                                            }
+                                            else
+                                            {
+                                                <span class="rg-ico rg-arrow-idle rg-ico-sort"></span>
+                                            }
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <span class="rg-title">@col.Header</span>
+                                    }
+                                    @if (HasPopup(col))
+                                    {
+                                        <button type="button" class="rg-funnel @(isActive ? "active" : "")" data-rg-toggle="@col.Key" aria-label="Filter @col.Header" title="Filter">
+                                            <span class="rg-ico rg-ico-filter"></span>
+                                        </button>
+                                    }
+                                </div>
+                                @if (resizable)
+                                {
+                                    <span class="rg-resize" data-rg-resize></span>
+                                }
+                            </th>
+                        }
+                    </tr>
+                    </thead>
+                    <tbody>
+                    @if (_deferred)
+                    {
+                        @for (var i = 0; i < Math.Min(pageSize, 12); i++)
+                        {
+                            <tr class="rg-skeleton-row" aria-hidden="true">
+                                @if (hasDetail)
+                                {
+                                    <td class="rg-expand-cell"></td>
+                                }
+                                @for (var c = 0; c < columns.Count; c++)
+                                {
+                                    <td><span class="rg-skeleton rg-skeleton-bar @SkeletonWidthClass(c)"></span></td>
+                                }
+                            </tr>
+                        }
+                    }
+                    else if (prepared.Rows.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="@spanCols" class="rg-empty">
+                                <span class="rg-ico rg-ico-empty rg-empty-icon"></span>
+                                <div class="rg-empty-title">@L["Grid_NoRecords"]</div>
+                                <div class="rg-empty-hint">@(state.Filters.Count > 0 ? L["Grid_NoRecordsFiltered"] : L["Grid_NoRecordsEmpty"])</div>
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var row in prepared.Rows)
+                        {
+                            var rowKey = RowKey(row);
+                            var detailId = $"{Id}-detail-{rowKey}";
+                            var detailKey = rowKey + "-detail";
+                            <tr data-row-key="@rowKey" @key="rowKey">
+                                @if (hasDetail)
+                                {
+                                    <td class="rg-expand-cell">
+                                        <button type="button" class="rg-expand" data-rg-expand="@detailId"
+                                                data-rg-detail-url="@DetailUrl!.Replace("{key}", rowKey)"
+                                                aria-expanded="false" aria-label="@L["Grid_ExpandRow"]">
+                                            <span class="rg-ico rg-ico-chevron"></span>
+                                        </button>
+                                    </td>
+                                }
+                                @foreach (var col in columns)
+                                {
+                                    var alignCol = col.Align ?? (col.Filter == GridFilterType.Number ? "right" : null);
+                                    var editable = prepared.CanEdit && col.Editable && !string.IsNullOrEmpty(col.Editor);
+                                    <td data-rg-field="@col.Key" data-label="@col.Header"
+                                        class="@AlignClass(alignCol) @(col.Wrap ? "rg-wrap" : null) @(editable ? "rg-editable" : null) @col.CssClass"
+                                        data-rg-edit="@(editable ? col.Editor : null)">
+                                        @RenderCell(col, row)
+                                    </td>
+                                }
+                                @if (hasCards)
+                                {
+                                    <td class="rg-card" colspan="@spanCols">
+                                        @if (CardTemplate is not null)
+                                        {
+                                            @CardTemplate(row)
+                                        }
+                                        else
+                                        {
+                                            @((MarkupString)Card!(row).Html)
+                                        }
+                                    </td>
+                                }
+                            </tr>
+                            @if (hasDetail)
+                            {
+                                <tr class="rg-detail-row" data-detail-row="@rowKey" hidden @key="detailKey">
+                                    <td colspan="@spanCols" class="rg-detail-cell">
+                                        <div id="@detailId" class="rg-detail">
+                                            <div class="rg-detail-loading">
+                                                <span class="rg-ico rg-ico-spinner rg-ico-spin"></span> Loading…
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    }
+                    </tbody>
+                </table>
+            </div>
+
+            @if (popupColumns.Count > 0)
+            {
+                var activeFilters = _filterValues.Keys.Concat(_setSelections.Keys).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+                <button type="button" class="rg-filter-fab" data-rg-filter-open aria-label="@L["Grid_OpenFilters"]">
+                    <span class="rg-ico rg-ico-filter"></span><span>@L["Grid_Filter"]</span>
+                    @if (activeFilters > 0)
+                    {
+                        <span class="rg-filter-count">@activeFilters</span>
+                    }
+                </button>
+                <div class="rg-filter-backdrop" data-rg-filter-close></div>
+                <div class="rg-filter-drawer">
+                    <div class="rg-filter-head"><span>@L["Grid_Filters"]</span>
+                        <button type="button" class="rg-filter-x" data-rg-filter-close aria-label="@L["Grid_CloseFilters"]">
+                            <span class="rg-ico rg-ico-close"></span></button>
+                    </div>
+                    <div class="rg-filter-body">
+                        @foreach (var col in popupColumns)
+                        {
+                            <div class="rg-pop" id="@(Id)-pop-@col.Key" data-rg-pop="@col.Key" hx-preserve="true">
+                                <div class="rg-pop-label">@col.Header</div>
+                                @if (col.Filter == GridFilterType.Set)
+                                {
+                                    var selected = _setSelections.TryGetValue(col.Key, out var sel) ? sel : (IReadOnlyCollection<string>)[];
+                                    <div class="rg-pop-set">
+                                        @foreach (var option in col.SetOptions!)
+                                        {
+                                            <label class="rg-pop-check">
+                                                <input type="checkbox" name="fs_@col.Key" value="@option.Value" checked="@selected.Contains(option.Value)"
+                                                       hx-post="@_endpoints.Region" hx-trigger="change" hx-vals='{"page":"1"}'/>
+                                                <span>@option.Label</span>
+                                            </label>
+                                        }
+                                    </div>
+                                }
+                                else
+                                {
+                                    var val = _filterValues.TryGetValue(col.Key, out var fv) ? fv : string.Empty;
+                                    var curOp = _filterOps.TryGetValue(col.Key, out var op) ? op : GridFilterOps.DefaultKey(col.Filter);
+                                    var inputType = col.Filter == GridFilterType.Number ? "number" : col.Filter == GridFilterType.Date ? "date" : "text";
+                                    <select name="fop_@col.Key" class="rg-pop-op" hx-post="@_endpoints.Region" hx-trigger="change" hx-vals='{"page":"1"}'>
+                                        @foreach (var (key, label) in GridFilterOps.Options(col.Filter))
+                                        {
+                                            <option value="@key" selected="@(key == curOp)">@label</option>
+                                        }
+                                    </select>
+                                    <input name="f_@col.Key" type="@inputType" value="@val" class="rg-pop-input" placeholder="Filter…" autocomplete="off"
+                                           hx-post="@_endpoints.Region" hx-trigger="@(col.Filter == GridFilterType.Date ? "change" : "input changed delay:400ms")" hx-vals='{"page":"1"}'/>
+                                }
+                                <div class="rg-pop-actions">
+                                    <button type="button" class="rg-pop-clear" data-rg-clear="@col.Key">Clear filter
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    <div class="rg-filter-actions">
+                        <button type="button" class="rg-pop-clear" data-rg-filter-clearall>Clear all</button>
+                        <button type="button" class="rg-nav rg-filter-done" data-rg-filter-close>Done</button>
+                    </div>
+                </div>
+            }
+
+            <div class="rg-foot">
+                <div class="rg-foot-cell">
+                    <span>Page Size:</span>
+                    <select name="pageSize" class="rg-select" hx-post="@_endpoints.Region" hx-trigger="change" hx-vals='{"page":"1"}'>
+                        @foreach (var size in PageSizeOptions)
+                        {
+                            <option value="@size" selected="@(size == state.PageSize)">@size</option>
+                        }
+                    </select>
+                </div>
+
+                <span class="rg-nums">@L.Format("Grid_Range", L.Number(from), L.Number(to), L.Number(prepared.TotalCount))</span>
+
+                <div class="rg-pager">
+                    <button type="button" class="rg-nav" title="@L["Grid_FirstPage"]" disabled="@prevDisabled" hx-post="@_endpoints.Region" hx-vals='{"page":"1"}'>
+                        <span class="rg-ico rg-ico-first"></span>
+                    </button>
+                    <button type="button" class="rg-nav" title="@L["Grid_PreviousPage"]" disabled="@prevDisabled" hx-post="@_endpoints.Region" hx-vals="@($"{{\"page\":\"{pageNo - 1}\"}}")">
+                        <span class="rg-ico rg-ico-prev"></span>
+                    </button>
+                    <span class="rg-nums rg-pageinfo">@L.Format("Grid_PageInfo", L.Number(pageNo), L.Number(totalPages))</span>
+                    <button type="button" class="rg-nav" title="@L["Grid_NextPage"]" disabled="@nextDisabled" hx-post="@_endpoints.Region" hx-vals="@($"{{\"page\":\"{pageNo + 1}\"}}")">
+                        <span class="rg-ico rg-ico-next"></span>
+                    </button>
+                    <button type="button" class="rg-nav" title="@L["Grid_LastPage"]" disabled="@nextDisabled" hx-post="@_endpoints.Region" hx-vals="@($"{{\"page\":\"{totalPages}\"}}")">
+                        <span class="rg-ico rg-ico-last"></span>
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public RaptorGridColumnCollector<TRow> Collector { get; set; } = default!;
+    [Parameter, EditorRequired] public Func<GridQueryState, string?, CancellationToken, Task<GridPage<TRow>>> ItemsProvider { get; set; } = default!;
+    [Parameter, EditorRequired] public Func<TRow, string> RowKey { get; set; } = default!;
+
+    [Parameter] public string Id { get; set; } = "grid";
+    [Parameter] public string Handler { get; set; } = "Grid";
+    [Parameter] public int PageSize { get; set; } = 25;
+    [Parameter] public int[] PageSizeOptions { get; set; } = [25, 50, 100];
+    [Parameter] public bool Compact { get; set; }
+    [Parameter] public string? Include { get; set; }
+    [Parameter] public string? ViewPermission { get; set; }
+    [Parameter] public string? EditPermission { get; set; }
+
+    /// <summary>When true (default), skips fetching data on the initial GET render so the page shell ships immediately;
+    /// the grid then loads its first page via its own load POST, showing skeleton rows until data arrives.</summary>
+    [Parameter]
+    public bool DeferInitialLoad { get; set; } = true;
+
+    /// <summary>Expandable master-detail rows: a leading expand toggle per row that htmx-fetches <see cref="DetailUrl"/>.</summary>
+    [Parameter]
+    public bool MasterDetail { get; set; }
+
+    /// <summary>Detail URL template (with <c>{key}</c>) fetched into the expanded row on first expand.</summary>
+    [Parameter]
+    public string? DetailUrl { get; set; }
+
+    /// <summary>Custom mobile card renderer; when set, each row also carries a full-width card cell (shown when
+    /// the grid folds to cards on narrow viewports).</summary>
+    [Parameter]
+    public Func<TRow, GridCell>? Card { get; set; }
+
+    /// <summary>Markup-based mobile card renderer — the declarative sibling of <see cref="Card"/>. When set, it
+    /// takes priority over <see cref="Card"/> and renders as ordinary component markup instead of an HTML string.</summary>
+    [Parameter]
+    public RenderFragment<TRow>? CardTemplate { get; set; }
+
+    /// <summary>Explicit htmx POST target. When null the grid posts to its owning page's ?handler={Handler}
+    /// (Razor Pages). A routable .razor page has no such handler, so it passes a minimal-API route here.</summary>
+    [Parameter]
+    public string? Endpoint { get; set; }
+
+    private PreparedGrid<TRow>? _prepared;
+    private GridEndpoints _endpoints;
+    private bool _deferred;
+    private Dictionary<string, RaptorColumnSpec<TRow>> _specByKey = new(StringComparer.OrdinalIgnoreCase);
+    private IReadOnlyDictionary<string, string> _filterValues = new Dictionary<string, string>();
+    private IReadOnlyDictionary<string, string> _filterOps = new Dictionary<string, string>();
+    private IReadOnlyDictionary<string, IReadOnlyCollection<string>> _setSelections = new Dictionary<string, IReadOnlyCollection<string>>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var http = HttpAccessor.HttpContext ?? throw new InvalidOperationException("<RaptorGrid> needs an active HttpContext (server render).");
+
+        _specByKey = Collector.Specs.ToDictionary(s => s.Column.Key, StringComparer.OrdinalIgnoreCase);
+
+        var view = new GridView<TRow>
+        {
+            Id = Id,
+            Columns = [.. Collector.Specs.Select(s => s.Column)],
+            PageSize = PageSize,
+            PageSizeOptions = PageSizeOptions,
+            Include = Include,
+            Compact = Compact,
+            ViewPermission = ViewPermission,
+            EditPermission = EditPermission,
+            DeferInitialLoad = DeferInitialLoad,
+        };
+
+        _deferred = DeferInitialLoad && HttpMethods.IsGet(http.Request.Method);
+        if (Endpoint is { Length: > 0 } ep)
+        {
+            _endpoints = GridEndpoints.FromBase(ep);
+        }
+        else
+        {
+            var path = http.Request.Path.Value ?? string.Empty;
+            _endpoints = new GridEndpoints(
+                Region: $"{path}?handler={Handler}",
+                Block: $"{path}?handler={Handler}Block",
+                Cell: $"{path}?handler={Handler}Cell");
+        }
+
+        IEnumerable<KeyValuePair<string, StringValues>> request =
+            http.Request.HasFormContentType ? http.Request.Form : http.Request.Query;
+
+        var source = new DelegateGridSource<TRow>(view, ItemsProvider, RowKey);
+        _prepared = await Builder.PrepareAsync(source, request, http.RequestAborted, _deferred);
+        (_filterValues, _filterOps, _setSelections) = RaptorGridBuilder.BuildFilterState(_prepared.State);
+    }
+
+    private RenderFragment RenderCell(GridColumn<TRow> col, TRow row) => builder =>
+    {
+        var template = _specByKey.TryGetValue(col.Key, out var spec) ? spec.CellTemplate : null;
+        if (template is not null)
+            builder.AddContent(0, template(row));
+        else if (col.Cell is not null)
+            builder.AddMarkupContent(1, col.Cell(row).Html);
+        else
+            builder.AddContent(2, col.Value?.Invoke(row)?.ToString());
+    };
+
+    private static bool HasPopup(GridColumn<TRow> c) =>
+        c.Filter is GridFilterType.Text or GridFilterType.Number or GridFilterType.Date
+        || (c.Filter == GridFilterType.Set && c.SetOptions is { Count: > 0 });
+
+    private static string AlignClass(string? align) => align switch
+    {
+        "center" => "rg-al-center",
+        "right" => "rg-al-right",
+        _ => "rg-al-left"
+    };
+
+    /// <summary>Deterministic bar width for a skeleton cell, keyed off the column index — cycles through a
+    /// few widths so a skeleton row reads as plausible data rather than a uniform block.</summary>
+    private static string SkeletonWidthClass(int columnIndex) => (columnIndex % 4) switch
+    {
+        0 => "rg-skeleton-w60",
+        1 => "rg-skeleton-w80",
+        2 => "rg-skeleton-w40",
+        _ => "rg-skeleton-w70"
+    };
+}

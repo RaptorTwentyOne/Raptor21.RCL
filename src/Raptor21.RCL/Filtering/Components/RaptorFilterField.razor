@@ -1,0 +1,44 @@
+@typeparam TModel
+@typeparam TValue
+@using System.Linq.Expressions
+@using Raptor21.RCL.Filtering
+
+@code {
+    [CascadingParameter] private RaptorFilterFieldCollector<TModel>? Collector { get; set; }
+
+    /// <summary>Bound member — its name is the field's key.</summary>
+    [Parameter]
+    [EditorRequired]
+    public Expression<Func<TModel, TValue>> For { get; set; } = default!;
+
+    [Parameter]
+    [EditorRequired]
+    public string Label { get; set; } = default!;
+
+    [Parameter] public FilterFieldKind Kind { get; set; } = FilterFieldKind.Text;
+    [Parameter] public IReadOnlyList<FilterOperator>? Operators { get; set; }
+    [Parameter] public IReadOnlyList<FilterOption>? Options { get; set; }
+    [Parameter] public string? Group { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public IReadOnlyList<FilterOption>? Units { get; set; }
+    [Parameter] public bool AllowMultiple { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (Collector is null)
+            throw new InvalidOperationException("<RaptorFilterField> must be nested inside <RaptorFilter>.");
+
+        var field = FilterField.For(For, Label) with
+        {
+            Kind = Kind,
+            Operators = Operators,
+            Options = Options,
+            Group = Group,
+            Placeholder = Placeholder,
+            Units = Units,
+            AllowMultiple = AllowMultiple,
+        };
+
+        Collector.Add(field);
+    }
+}

@@ -1,0 +1,137 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Server-side MVC views / tag helpers in the RCL. -->
+    <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
+    <RootNamespace>Raptor21.RCL</RootNamespace>
+    <AssemblyName>Raptor21.RCL</AssemblyName>
+    <!-- XML docs are generated and published so consumers get them in IntelliSense. CS1591 (missing doc
+         comment on a public member) is suppressed. -->
+    <!-- This package ships no static web assets; see the EmbeddedResource comment below for why. -->
+    <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Package">
+    <IsPackable>true</IsPackable>
+    <PackageId>Raptor21.RCL</PackageId>
+    <!-- 0.x: the public surface is not yet a compatibility commitment. Move to 1.0.0 once it is. -->
+    <Version>0.1.0</Version>
+    <Description>Server-rendered grid and filter components for ASP.NET Core Razor Pages, driven by htmx.</Description>
+    <PackageTags>razor;razor-pages;grid;filter;htmx;rcl</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Authors>RaptorTwentyOne</Authors>
+    <PackageProjectUrl>https://github.com/RaptorTwentyOne/Raptor21</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/RaptorTwentyOne/Raptor21</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <!-- Deterministic, source-linked builds so a consumer can step into this package's code. -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <!-- Charts/Models and Charts/Serialization are ported from Blazor-ApexCharts (MIT). MIT requires the
+         notice to travel WITH the distribution, so it ships in the package, not only in the repo. -->
+    <None Include="THIRD-PARTY-NOTICES.txt" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <!-- The rspack output is the shipped artefact. It is embedded in the assembly rather than exposed as
+       static web assets copied into the consumer's wwwroot: installing the package is then the whole
+       integration, and a consumer's copy cannot drift from the version they reference.
+       Source maps are excluded so they do not bloat the package. -->
+  <ItemGroup>
+    <EmbeddedResource Include="wwwroot\dist\**\*" Exclude="wwwroot\dist\**\*.map" />
+
+    <!-- ...and NOT as static web assets, which the Razor SDK would otherwise do automatically for
+         everything under wwwroot. Two copies of the same asset served by two mechanisms is the drift the
+         embedded design prevents, and the /_content URLs keep serving files even from an assembly that
+         embeds none — which makes a broken build look correctly wired while every page renders unstyled.
+         BOTH switches are required, and each one alone makes it worse:
+           * `Content Remove` alone: the Razor SDK collects static web assets from its own item set, not
+             from Content, so the staticwebassets/ copy survives untouched.
+           * `StaticWebAssetsEnabled=false` alone: with the SDK's handling off, wwwroot falls back to the
+             default Content packing, which ships the files twice more (content/ and contentFiles/). -->
+    <Content Remove="wwwroot\**" />
+    <None Remove="wwwroot\**" />
+  </ItemGroup>
+
+  <!-- Client sources are build inputs, never compiled by MSBuild. -->
+  <ItemGroup>
+    <None Include="Client\**\*" Exclude="Client\node_modules\**" />
+    <Compile Remove="Client\**" />
+    <Content Remove="Client\**" />
+    <EmbeddedResource Remove="Client\**" />
+  </ItemGroup>
+
+  <!-- The one client file that IS shipped to the consumer's source tree: the ambient type declarations for
+       the globals the bundle installs, so a consumer needs no npm package to describe them.
+       It rides in contentFiles rather than the embedded bundle because TypeScript resolves types from the
+       file system at compile time — a served URL cannot satisfy it. -->
+  <ItemGroup>
+    <Content Include="Client\types\raptor21.d.ts"
+             Pack="true"
+             PackagePath="contentFiles\any\any\raptor21.d.ts"
+             BuildAction="None"
+             CopyToOutput="false"
+             Visible="false" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <!-- CI sets this so the bundle is rebuilt from source before packing. Locally the committed dist is
+         used, so a .NET-only developer never needs Node installed. -->
+    <RaptorBuildClient Condition="'$(RaptorBuildClient)' == ''">false</RaptorBuildClient>
+    <RaptorClientDir>$(MSBuildProjectDirectory)\Client</RaptorClientDir>
+  </PropertyGroup>
+
+  <Target Name="RaptorBuildClientBundle" BeforeTargets="BeforeBuild" Condition="'$(RaptorBuildClient)' == 'true'">
+    <Message Importance="high" Text="Raptor21: building client bundle with rspack..." />
+    <Exec Command="npm ci --no-audit --no-fund" WorkingDirectory="$(RaptorClientDir)" />
+    <Exec Command="npm run build" WorkingDirectory="$(RaptorClientDir)" />
+  </Target>
+
+  <!-- A missing bundle means every consumer renders unstyled with dead htmx, so this is an Error rather
+       than a Warning: a build that produces an asset-free assembly would otherwise report success.
+       The manifest is checked by name rather than the directory merely being non-empty, because it is the
+       one file RaptorAssetStore needs — a dist holding chunks but no manifest reads as no assets at all.
+       Exists() rather than an ItemGroup: an Include of a plain path yields an item whether or not the file
+       is there (only globs collapse to nothing), so the obvious '@(Item)' == '' test can never fire. -->
+  <Target Name="RaptorClientBundleCheck" AfterTargets="RaptorBuildClientBundle" BeforeTargets="BeforeBuild">
+    <Error Condition="!Exists('$(MSBuildProjectDirectory)\wwwroot\dist\assets-manifest.json')"
+           Text="Raptor21: wwwroot/dist/assets-manifest.json is missing — the client bundle has not been built, so this assembly would embed no stylesheet or script. Run 'npm ci &amp;&amp; npm run build' in Client/, or build with -p:RaptorBuildClient=true." />
+  </Target>
+
+  <!-- The other half of the same failure: dist EXISTS but predates the TypeScript it was built from. The
+       check above cannot see that, because a stale bundle is a present bundle.
+
+       Inputs/Outputs does the comparison rather than hand-written timestamp arithmetic: MSBuild skips a
+       target whose outputs are newer than every input, so this target running at all is the signal.
+       A Warning, not an Error: a developer mid-edit under Client/src has a legitimately stale dist and
+       should not be blocked. CI builds with -p:RaptorBuildClient=true, where the bundle is regenerated
+       and the condition below is skipped entirely. -->
+  <ItemGroup>
+    <RaptorClientSource Include="$(RaptorClientDir)\src\**\*" />
+  </ItemGroup>
+
+  <Target Name="RaptorClientBundleFreshness"
+          BeforeTargets="BeforeBuild"
+          Condition="'$(RaptorBuildClient)' != 'true' And Exists('$(MSBuildProjectDirectory)\wwwroot\dist\assets-manifest.json')"
+          Inputs="@(RaptorClientSource)"
+          Outputs="$(MSBuildProjectDirectory)\wwwroot\dist\assets-manifest.json">
+    <Warning Text="Raptor21: wwwroot/dist is older than Client/src — the embedded bundle does not include your latest client changes. Run 'npm run build' in Client/, or build with -p:RaptorBuildClient=true." />
+  </Target>
+
+</Project>

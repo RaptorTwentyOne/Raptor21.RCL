@@ -1,0 +1,15 @@
+@using Raptor21.RCL.Grid
+@model GridViewModel
+<tr class="rg-sentinel" data-rg-sentinel
+    hx-post="@Model.BlockUrl"
+    hx-trigger="sgload"
+    hx-include="#@(Model.GridId)-form"
+    hx-vals='@($"{{\"page\":\"{Model.NextPage}\"}}")'
+    hx-target="this"
+    hx-swap="outerHTML"
+    hx-sync="#@(Model.GridId)-form:abort"
+    hx-indicator="this">
+    <td colspan="@Model.SpanColumns" class="rg-loading-row">
+        <span class="rg-ico rg-ico-spinner rg-ico-spin"></span> Loading…
+    </td>
+</tr>

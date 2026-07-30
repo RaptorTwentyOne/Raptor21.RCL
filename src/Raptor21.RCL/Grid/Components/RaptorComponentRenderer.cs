@@ -1,0 +1,83 @@
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+
+namespace Raptor21.RCL.Grid.Components;
+
+/// <summary>
+/// Renders a Razor Component to an HTML string, server-side, with the framework <see cref="HtmlRenderer"/>
+/// — no route, no socket, no interactivity. This is how a grid page answers its <c>OnPostGridAsync</c>: the
+/// grid's htmx form posts to that handler, which re-renders the <c>&lt;RaptorGrid&gt;</c> component for the
+/// new filter/sort/page state and returns the region markup for htmx to swap.
+/// </summary>
+public static class RaptorComponentRenderer
+{
+    public static async Task<string> RenderToStringAsync<TComponent>(
+        HttpContext httpContext, IReadOnlyDictionary<string, object?>? parameters = null)
+        where TComponent : IComponent
+    {
+        ArgumentNullException.ThrowIfNull(httpContext);
+
+        if (httpContext.Request.HasFormContentType)
+            await httpContext.Request.ReadFormAsync();
+
+        var services = httpContext.RequestServices;
+        var loggerFactory = services.GetRequiredService<ILoggerFactory>();
+
+        InitializeNavigation(services, httpContext);
+
+        await using var renderer = new HtmlRenderer(services, loggerFactory);
+        return await renderer.Dispatcher.InvokeAsync(async () =>
+        {
+            var pv = parameters is { Count: > 0 }
+                ? ParameterView.FromDictionary(new Dictionary<string, object?>(parameters))
+                : ParameterView.Empty;
+            var root = await renderer.RenderComponentAsync<TComponent>(pv);
+            return root.ToHtmlString();
+        });
+    }
+
+    private static readonly System.Reflection.MethodInfo? NavInitialize =
+        typeof(NavigationManager).GetMethod("Initialize",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+            [typeof(string), typeof(string)]);
+
+    /// <summary>
+    /// Seeds the scoped <see cref="NavigationManager"/> with the current request URI. The framework
+    /// <see cref="HtmlRenderer"/> does not run the Blazor endpoint, so the manager is otherwise
+    /// uninitialised and any component that reads its URI throws. A no-op when it is already initialised.
+    /// </summary>
+    private static void InitializeNavigation(IServiceProvider services, HttpContext httpContext)
+    {
+        if (NavInitialize is null || services.GetService<NavigationManager>() is not { } nav) return;
+
+        var request = httpContext.Request;
+        var baseUri = $"{request.Scheme}://{request.Host}{request.PathBase}/";
+        var fullUri = $"{request.Scheme}://{request.Host}{request.PathBase}{request.Path}{request.QueryString}";
+        try
+        {
+            NavInitialize.Invoke(nav, [baseUri, fullUri]);
+        }
+        catch (System.Reflection.TargetInvocationException)
+        {
+            // Already initialised by the framework; the second call is redundant, not an error.
+        }
+    }
+
+    /// <summary>
+    /// Grid POST handler result: renders <typeparamref name="TComponent"/> (the page's grid component) to the
+    /// swapped region markup. Authorization is whatever guards the hosting page — no library route or
+    /// per-call authorization is involved.
+    /// </summary>
+    public static async Task<IActionResult> RaptorGridComponentAsync<TComponent>(this PageModel page)
+        where TComponent : IComponent
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        var html = await RenderToStringAsync<TComponent>(page.HttpContext);
+        return new ContentResult { Content = html, ContentType = "text/html" };
+    }
+}

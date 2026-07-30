@@ -1,0 +1,112 @@
+@namespace Raptor21.RCL.Layout
+
+<aside class="@RootCssClass" id="@Id" hx-preserve="@PreserveAttribute" @attributes="AdditionalAttributes">
+
+    @if (Brand is not null)
+    {
+        <div class="@BrandCssClass">
+            @Brand
+        </div>
+    }
+
+    @if (ShowToggle)
+    {
+        <button type="button" class="@ToggleCssClass" aria-label="@ToggleLabel">
+            @ToggleContent
+        </button>
+    }
+
+    <div class="@ScrollCssClass" id="@ScrollId">
+        @Menu
+    </div>
+
+    @if (Bottom is not null)
+    {
+        <div class="@BottomCssClass">
+            @Bottom
+        </div>
+    }
+
+</aside>
+
+@code {
+
+    /// <summary>The rail's element id. Must be stable across navigations for <see cref="Preserve"/> to
+    /// work — htmx matches the preserved node to the response by id.</summary>
+    [Parameter]
+    public string Id { get; set; } = "sidebar";
+
+    /// <summary>Emit <c>hx-preserve="true"</c> on the rail so boosted navigations keep the live node,
+    /// along with any client state and event bindings held inside it. On by default; turn it off for a
+    /// rail that has to re-render per navigation.</summary>
+    [Parameter]
+    public bool Preserve { get; set; } = true;
+
+    /// <summary>Classes appended to the rail, after <c>rg-sidebar</c>.</summary>
+    [Parameter]
+    public string? Class { get; set; }
+
+    /// <summary>Brand/logo content. The wrapper is omitted entirely when this is not supplied.</summary>
+    [Parameter]
+    public RenderFragment? Brand { get; set; }
+
+    /// <summary>Classes appended to the brand wrapper, after <c>rg-sidebar-brand</c>.</summary>
+    [Parameter]
+    public string? BrandClass { get; set; }
+
+    /// <summary>The menu, rendered inside the scroll region. Everything about it — structure, item
+    /// markup, expansion behaviour — belongs to the consumer.</summary>
+    [Parameter]
+    public RenderFragment? Menu { get; set; }
+
+    /// <summary>The scroll region's element id, for scrollbar plugins and CSS that sizes it.</summary>
+    [Parameter]
+    public string? ScrollId { get; set; } = "sidebar-scroll";
+
+    /// <summary>Classes appended to the scroll region, after <c>rg-sidebar-scroll</c>.</summary>
+    [Parameter]
+    public string? ScrollClass { get; set; }
+
+    /// <summary>Render the collapse/expand control. On by default.</summary>
+    [Parameter]
+    public bool ShowToggle { get; set; } = true;
+
+    /// <summary>Classes appended to the collapse control, after <c>rg-sidebar-toggle</c>. This is where
+    /// a consumer puts the class its own menu script binds to.</summary>
+    [Parameter]
+    public string? ToggleClass { get; set; }
+
+    /// <summary>Accessible name for the collapse control.</summary>
+    [Parameter]
+    public string ToggleLabel { get; set; } = "Toggle sidebar";
+
+    /// <summary>The collapse control's content — an icon, usually. Left unset, the button renders
+    /// empty.</summary>
+    [Parameter]
+    public RenderFragment? ToggleContent { get; set; }
+
+    /// <summary>Pinned foot below the scroll region. The wrapper is omitted entirely when this is not
+    /// supplied.</summary>
+    [Parameter]
+    public RenderFragment? Bottom { get; set; }
+
+    /// <summary>Classes appended to the foot wrapper, after <c>rg-sidebar-bottom</c>.</summary>
+    [Parameter]
+    public string? BottomClass { get; set; }
+
+    /// <summary>Splatted onto the rail element.</summary>
+    [Parameter(CaptureUnmatchedValues = true)]
+    public IReadOnlyDictionary<string, object?>? AdditionalAttributes { get; set; }
+
+    private string? PreserveAttribute => Preserve ? "true" : null;
+
+    private string RootCssClass => Combine("rg-sidebar", Class);
+    private string BrandCssClass => Combine("rg-sidebar-brand", BrandClass);
+    private string ScrollCssClass => Combine("rg-sidebar-scroll", ScrollClass);
+    private string ToggleCssClass => Combine("rg-sidebar-toggle", ToggleClass);
+    private string BottomCssClass => Combine("rg-sidebar-bottom", BottomClass);
+
+    private static string Combine(string ownClass, string? extra)
+        => string.IsNullOrWhiteSpace(extra) ? ownClass : $"{ownClass} {extra}";
+
+}

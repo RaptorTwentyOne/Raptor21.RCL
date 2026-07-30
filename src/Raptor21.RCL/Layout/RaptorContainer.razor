@@ -1,0 +1,30 @@
+@namespace Raptor21.RCL.Layout
+
+<div class="rg-container @Class" data-rg-skel="@Skeleton" data-rg-skel-count="@Count" data-rg-skel-cols="@Columns">
+    @ChildContent
+</div>
+
+@code {
+
+    /// <summary>What kind of content this region holds: <c>kpi</c>, <c>cards</c>, <c>table</c>,
+    /// <c>form</c>, <c>chart</c> or <c>block</c>. Drives which shimmer layout the skeleton renderer picks.</summary>
+    [Parameter, EditorRequired]
+    public string Skeleton { get; set; } = "block";
+
+    /// <summary>Hint for how many items this region holds (KPI tiles, cards, table rows, form fields).
+    /// Left unset, the renderer falls back to a sensible default per <see cref="Skeleton"/> type.</summary>
+    [Parameter]
+    public int? Count { get; set; }
+
+    /// <summary>Hint for how many columns to lay items out in (cards grid). Ignored by layouts that don't
+    /// use columns.</summary>
+    [Parameter]
+    public int? Columns { get; set; }
+
+    /// <summary>Extra classes appended to the wrapper.</summary>
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+}

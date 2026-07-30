@@ -1,0 +1,48 @@
+.rg-progress {
+    padding: 1rem;
+
+    > :not([hidden]) ~ :not([hidden]) {
+        margin-top: .75rem;
+    }
+}
+
+.rg-progress-status {
+    font-size: .875rem;
+    color: var(--rg-fg);
+}
+
+.rg-progress-track {
+    width: 100%;
+    height: .5rem;
+    overflow: hidden;
+    border-radius: .25rem;
+    background: var(--rg-border);
+}
+
+.rg-progress-bar {
+    height: 100%;
+    width: 0;
+    border-radius: inherit;
+    background: var(--rg-accent);
+    transition: width .15s cubic-bezier(.4, 0, .2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rg-progress-bar { transition: none; }
+}
+
+.rg-progress-meta {
+    font-size: .75rem;
+    color: var(--rg-muted);
+}
+
+.rg-progress-warn {
+    padding: .5rem;
+    font-size: .75rem;
+    border-radius: .25rem;
+    border: 1px solid var(--rg-warning-border);
+    background: var(--rg-warning-bg);
+    color: var(--rg-warning-fg);
+
+    > * + * { margin-top: .25rem; }
+}

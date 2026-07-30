@@ -1,0 +1,20 @@
+@namespace Raptor21.RCL.Tabs
+
+@code {
+    [CascadingParameter] private RaptorTabsCollector? Collector { get; set; }
+
+    /// <summary>The tab's label.</summary>
+    [Parameter, EditorRequired] public string Title { get; set; } = default!;
+
+    /// <summary>An icon-font class rendered before the label, e.g. <c>ri-group-line</c>.</summary>
+    [Parameter] public string? Icon { get; set; }
+
+    /// <summary>Open this tab active. If none is marked, the first tab is active.</summary>
+    [Parameter] public bool Active { get; set; }
+
+    /// <summary>The panel content.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    protected override void OnInitialized() =>
+        Collector?.Add(new RaptorTabItem(Title, Icon, Active, ChildContent));
+}

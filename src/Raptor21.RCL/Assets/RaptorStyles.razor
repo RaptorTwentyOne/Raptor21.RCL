@@ -1,0 +1,21 @@
+@using Microsoft.Extensions.Options
+@using Raptor21.RCL.Assets
+@inject RaptorAssetStore Store
+@inject IOptions<RaptorOptions> Options
+
+@if (_href is not null)
+{
+    <link rel="stylesheet" href="@_href"/>
+}
+
+@code {
+    private string? _href;
+
+    protected override void OnInitialized()
+    {
+        var o = Options.Value;
+        if (!o.InjectAssets || !Store.HasAssets) return;
+        if (Store.FileName("raptor.css") is { } file) _href = $"{o.RoutePrefix}/{file}";
+    }
+
+}

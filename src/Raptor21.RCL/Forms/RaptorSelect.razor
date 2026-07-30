@@ -1,0 +1,44 @@
+@if (!string.IsNullOrEmpty(Label))
+{
+    <RaptorField Label="@Label" For="@Id" Required="@Required" Hint="@Hint">
+        <select @attributes="Attributes">@ChildContent</select>
+    </RaptorField>
+}
+else
+{
+    <select @attributes="Attributes">@ChildContent</select>
+}
+
+@code {
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Hint { get; set; }
+    [Parameter] public string? Name { get; set; }
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public IReadOnlyDictionary<string, object?>? AdditionalAttributes { get; set; }
+
+    private Dictionary<string, object?> Attributes
+    {
+        get
+        {
+            var a = new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["class"] = string.IsNullOrWhiteSpace(Class) ? "rg-select" : $"rg-select {Class}",
+            };
+            if (!string.IsNullOrEmpty(Name)) a["name"] = Name;
+            if (!string.IsNullOrEmpty(Id)) a["id"] = Id;
+            if (Required) a["required"] = "required";
+            if (Disabled) a["disabled"] = "disabled";
+            if (AdditionalAttributes is not null)
+                foreach (var kv in AdditionalAttributes)
+                    a[kv.Key] = kv.Value;
+            return a;
+        }
+    }
+
+}

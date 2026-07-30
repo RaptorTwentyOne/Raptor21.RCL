@@ -1,0 +1,23 @@
+.rg-chart {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.rg-chart--fill {
+    flex: 1 1 auto;
+    height: 100%;
+}
+
+.rg-chart__canvas {
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+}
+
+.rg-chart__state {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    justify-content: center;
+}

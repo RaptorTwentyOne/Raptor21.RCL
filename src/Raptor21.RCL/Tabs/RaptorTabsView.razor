@@ -1,0 +1,57 @@
+@namespace Raptor21.RCL.Tabs
+
+<div class="@RootClass" data-rg-component="tabs" id="@Id">
+    <div class="rg-tablist" role="tablist">
+        @for (var i = 0; i < Tabs.Count; i++)
+        {
+            var tab = Tabs[i];
+            var panelId = PanelId(i);
+            var active = i == _activeIndex;
+            <button type="button" class="@(active ? "rg-tab rg-tab-active" : "rg-tab")" role="tab"
+                    data-rg-tab="@panelId" id="@($"{panelId}-tab")"
+                    aria-selected="@(active ? "true" : "false")" aria-controls="@panelId">
+                @if (!string.IsNullOrEmpty(tab.Icon))
+                {
+                    <i class="@tab.Icon" aria-hidden="true"></i>
+                }
+                <span>@tab.Title</span>
+            </button>
+        }
+    </div>
+    <div class="rg-tabpanels">
+        @for (var i = 0; i < Tabs.Count; i++)
+        {
+            var panelId = PanelId(i);
+            var active = i == _activeIndex;
+            <div class="@(active ? "rg-tabpanel" : "rg-tabpanel rg-hidden")" id="@panelId" role="tabpanel"
+                 aria-labelledby="@($"{panelId}-tab")">
+                @Tabs[i].Content
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] private RaptorTabsCollector Collector { get; set; } = default!;
+
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string? Id { get; set; }
+
+    private readonly string _uid = $"rgtabs-{Guid.NewGuid():N}";
+    private int _activeIndex;
+
+    private IReadOnlyList<RaptorTabItem> Tabs => Collector.Tabs;
+    private string RootClass => string.IsNullOrWhiteSpace(Class) ? "rg-tabs" : $"rg-tabs {Class}";
+    private string PanelId(int index) => $"{(string.IsNullOrEmpty(Id) ? _uid : Id)}-panel-{index}";
+
+    protected override void OnParametersSet()
+    {
+        _activeIndex = 0;
+        for (var i = 0; i < Tabs.Count; i++)
+        {
+            if (!Tabs[i].Active) continue;
+            _activeIndex = i;
+            break;
+        }
+    }
+}

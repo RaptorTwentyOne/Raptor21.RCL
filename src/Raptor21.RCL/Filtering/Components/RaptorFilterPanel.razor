@@ -1,0 +1,232 @@
+@using Raptor21.RCL.Localization
+@using Microsoft.AspNetCore.Http
+@using Raptor21.RCL.Filtering
+@inject IHttpContextAccessor HttpAccessor
+@inject IRaptorLocalizer L
+
+@{
+    var query = HttpAccessor.HttpContext is { } http
+        ? http.BindFilterQuery(Schema)
+        : FilterQuery.Empty;
+
+    var model = FilterPanelViewModel.Build(Schema, query, Endpoint) with
+    {
+        Target = Target,
+        Include = Include,
+        Title = Title,
+        ShowSearch = ShowSearch,
+    };
+
+    var id = model.Id;
+    var panelId = $"{id}-rf";
+}
+
+<div class="rf" id="@panelId" data-rg-component="filter" data-rf data-rf-id="@id">
+    <div class="rf-backdrop" data-rf-close></div>
+
+    <aside class="rf-panel" role="dialog" aria-modal="true" aria-labelledby="@(panelId)-title">
+        <div class="rf-head">
+            <h2 class="rf-title" id="@(panelId)-title">@model.Title</h2>
+            <span class="rf-badge" hidden="@(!model.HasActive)">@model.ActiveCount</span>
+            <span class="rf-busy" aria-hidden="true"></span>
+            <button type="button" class="rf-x" data-rf-close aria-label="Close filters">&times;</button>
+        </div>
+
+        <form class="rf-form"
+              hx-post="@model.Endpoint"
+              hx-target="@model.Target"
+              hx-swap="outerHTML"
+              hx-trigger="change, keyup changed delay:450ms, search delay:200ms"
+              hx-include="@model.Include">
+
+            @if (model.ShowSearch)
+            {
+                <div class="rf-search">
+                    <input type="search" class="rf-in" name="search" value="@model.Query.Search"
+                           placeholder="Search…" autocomplete="off" aria-label="Search">
+                </div>
+            }
+
+            <div class="rf-body">
+                @foreach (var group in model.Groups)
+                {
+                    if (group.Title is { Length: > 0 } title)
+                    {
+                        <div class="rf-grouptitle">@title</div>
+                    }
+
+                    foreach (var fieldView in group.Fields)
+                    {
+                        var field = fieldView.Field;
+                        <details class="rf-sec" open="@fieldView.IsActive">
+                            <summary>
+                                <span class="rf-caret" aria-hidden="true"></span>
+                                <span class="rf-sec-label">@field.Label</span>
+                                @if (fieldView.IsActive)
+                                {
+                                    <span class="rf-dot" aria-label="Active"></span>
+                                }
+                            </summary>
+                            <div class="rf-sec-body">
+                                @foreach (var row in fieldView.Conditions)
+                                {
+                                    <input type="hidden" name="@row.Name("field")" value="@field.Key">
+
+                                    switch (field.Kind)
+                                    {
+                                        case FilterFieldKind.Text:
+                                        case FilterFieldKind.Number:
+                                        case FilterFieldKind.Date:
+                                        {
+                                            var ops = field.EffectiveOperators;
+                                            if (ops.Count > 1)
+                                            {
+                                                <select class="rf-sel" name="@row.Name("op")" aria-label="@field.Label operator">
+                                                    @foreach (var op in ops)
+                                                    {
+                                                        <option value="@op" selected="@(row.Operator == op)">@OpLabel(op)</option>
+                                                    }
+                                                </select>
+                                            }
+
+                                            var type = field.Kind switch
+                                            {
+                                                FilterFieldKind.Number => "number",
+                                                FilterFieldKind.Date => "date",
+                                                _ => "text"
+                                            };
+                                            var valueless = row.Operator is FilterOperator.IsNull or FilterOperator.IsNotNull;
+                                            <input type="@type" class="rf-in" name="@row.Name("v")" value="@row.Value"
+                                                   placeholder="@(field.Placeholder ?? field.Label)"
+                                                   autocomplete="off" aria-label="@field.Label"
+                                                   hidden="@valueless" disabled="@valueless">
+                                            break;
+                                        }
+
+                                        case FilterFieldKind.NumberRange:
+                                        case FilterFieldKind.DateRange:
+                                        {
+                                            var isDate = field.Kind == FilterFieldKind.DateRange;
+                                            if (!isDate && field.Units is { Count: > 0 } units)
+                                            {
+                                                var current = row.Unit ?? units[0].Value;
+                                                <div class="rf-tabs" role="group" aria-label="@field.Label unit">
+                                                    @foreach (var unit in units)
+                                                    {
+                                                        <button type="button" class="rf-tab" data-rf-unit="@row.Name("unit")"
+                                                                value="@unit.Value" aria-pressed="@(current == unit.Value ? "true" : "false")">@unit.Label</button>
+                                                    }
+                                                </div>
+                                                <input type="hidden" name="@row.Name("unit")" value="@current">
+                                            }
+
+                                            <div class="rf-row">
+                                                <input type="@(isDate ? "date" : "number")" class="rf-in" name="@row.Name("v")"
+                                                       value="@row.Value" placeholder="@(isDate ? "From" : "Min")"
+                                                       autocomplete="off" aria-label="@field.Label from">
+                                                <input type="@(isDate ? "date" : "number")" class="rf-in" name="@row.Name("v2")"
+                                                       value="@row.Value2" placeholder="@(isDate ? "To" : "Max")"
+                                                       autocomplete="off" aria-label="@field.Label to">
+                                            </div>
+                                            break;
+                                        }
+
+                                        case FilterFieldKind.Set:
+                                        {
+                                            <label class="rf-exclude">
+                                                <input type="checkbox" name="@row.Name("op")" value="@FilterOperator.NotIn"
+                                                       checked="@(row.Operator == FilterOperator.NotIn)">
+                                                <span>@L["Filter_Exclude"]</span>
+                                            </label>
+                                            <div class="rf-opts">
+                                                @foreach (var option in field.Options ?? [])
+                                                {
+                                                    <label class="rf-opt">
+                                                        <input type="checkbox" name="@row.Name("vs")" value="@option.Value"
+                                                               checked="@row.IsSelected(option.Value)">
+                                                        <span class="rf-opt-label">@option.Label</span>
+                                                        @if (option.Count is { } count)
+                                                        {
+                                                            <span class="rf-opt-count">@count</span>
+                                                        }
+                                                    </label>
+                                                }
+                                            </div>
+                                            break;
+                                        }
+
+                                        case FilterFieldKind.Boolean:
+                                        {
+                                            <div class="rf-seg" role="radiogroup" aria-label="@field.Label">
+                                                <label><input type="radio" name="@row.Name("op")" value="" checked="@(row.Operator is null)"><span>@L["Filter_Any"]</span></label>
+                                                <label><input type="radio" name="@row.Name("op")" value="@FilterOperator.IsTrue" checked="@(row.Operator == FilterOperator.IsTrue)"><span>@L["Filter_Yes"]</span></label>
+                                                <label><input type="radio" name="@row.Name("op")" value="@FilterOperator.IsFalse" checked="@(row.Operator == FilterOperator.IsFalse)"><span>No</span></label>
+                                            </div>
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                <button type="button" class="rf-fieldclear" data-rf-clear-field hidden="@(!fieldView.IsActive)">
+                                    Clear
+                                </button>
+                            </div>
+                        </details>
+                    }
+                }
+            </div>
+        </form>
+
+        <div class="rf-foot">
+            <button type="button" class="rf-clear" data-rf-clear-all>@L["Filter_ClearAll"]</button>
+            <button type="button" class="rf-done" data-rf-close>@L["Filter_ShowResults"]</button>
+        </div>
+    </aside>
+</div>
+
+@code {
+
+    /// <summary>What the screen can be filtered by.</summary>
+    [Parameter]
+    [EditorRequired]
+    public FilterSchema Schema { get; set; } = default!;
+
+    /// <summary>Where the panel posts (a RaptorPage htmx route, e.g. <c>/reports/orders/filter</c>).</summary>
+    [Parameter]
+    [EditorRequired]
+    public string Endpoint { get; set; } = default!;
+
+    /// <summary>CSS selector the panel's response replaces — for a grid, its region element.</summary>
+    [Parameter]
+    [EditorRequired]
+    public string Target { get; set; } = default!;
+
+    /// <summary>Extra selector whose fields ride along on every post — e.g. a grid's sort/column-order state.</summary>
+    [Parameter]
+    public string? Include { get; set; }
+
+    /// <summary>Panel title.</summary>
+    [Parameter]
+    public string Title { get; set; } = "Filters";
+
+    /// <summary>Show the free-text search box above the fields. Off by default.</summary>
+    [Parameter]
+    public bool ShowSearch { get; set; }
+
+    private static string OpLabel(FilterOperator op) => op switch
+    {
+        FilterOperator.Contains => "Contains",
+        FilterOperator.Equals => "Equals",
+        FilterOperator.NotEquals => "Not equals",
+        FilterOperator.StartsWith => "Starts with",
+        FilterOperator.EndsWith => "Ends with",
+        FilterOperator.GreaterThan => "Greater than",
+        FilterOperator.GreaterThanOrEqual => "Greater or equal",
+        FilterOperator.LessThan => "Less than",
+        FilterOperator.LessThanOrEqual => "Less or equal",
+        FilterOperator.IsNull => "Is empty",
+        FilterOperator.IsNotNull => "Is not empty",
+        _ => op.ToString()
+    };
+
+}

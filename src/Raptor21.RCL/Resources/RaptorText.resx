@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!--
+    The library's own user-visible text. Neutral culture = English, and it is also the fallback: a key missing
+    from a translation falls back here rather than disappearing.
+
+    Composite entries ({0}, {1}) are one resource on purpose. "1 to 25 of 32,023" reads like numbers with two
+    English connectives, but word order and separators differ per language, so translating "to" and "of"
+    separately would still assemble them in English order. The whole phrase belongs to the translator.
+  -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" msdata:Ordinal="0" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute name="space" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+
+  <data name="Grid_NoRecords" xml:space="preserve">
+    <value>No records found</value>
+  </data>
+  <data name="Grid_NoRecordsFiltered" xml:space="preserve">
+    <value>No rows match the current filters.</value>
+  </data>
+  <data name="Grid_NoRecordsEmpty" xml:space="preserve">
+    <value>Nothing to show here.</value>
+  </data>
+  <data name="Grid_Filter" xml:space="preserve">
+    <value>Filter</value>
+  </data>
+  <data name="Grid_Filters" xml:space="preserve">
+    <value>Filters</value>
+  </data>
+  <data name="Grid_FilterColumn" xml:space="preserve">
+    <value>Filter {0}</value>
+    <comment>{0} = column header</comment>
+  </data>
+  <data name="Grid_FilterPlaceholder" xml:space="preserve">
+    <value>Filter…</value>
+  </data>
+  <data name="Grid_OpenFilters" xml:space="preserve">
+    <value>Open filters</value>
+  </data>
+  <data name="Grid_CloseFilters" xml:space="preserve">
+    <value>Close filters</value>
+  </data>
+  <data name="Grid_ExpandRow" xml:space="preserve">
+    <value>Expand row</value>
+  </data>
+  <data name="Grid_FirstPage" xml:space="preserve">
+    <value>First page</value>
+  </data>
+  <data name="Grid_PreviousPage" xml:space="preserve">
+    <value>Previous page</value>
+  </data>
+  <data name="Grid_NextPage" xml:space="preserve">
+    <value>Next page</value>
+  </data>
+  <data name="Grid_LastPage" xml:space="preserve">
+    <value>Last page</value>
+  </data>
+  <data name="Grid_Range" xml:space="preserve">
+    <value>{0} to {1} of {2}</value>
+    <comment>Row range. {0} first row, {1} last row, {2} total. One phrase — do not split the connectives.</comment>
+  </data>
+  <data name="Grid_PageInfo" xml:space="preserve">
+    <value>Page {0} of {1}</value>
+    <comment>{0} current page, {1} total pages.</comment>
+  </data>
+
+  <data name="Filter_Exclude" xml:space="preserve">
+    <value>Exclude</value>
+  </data>
+  <data name="Filter_Any" xml:space="preserve">
+    <value>Any</value>
+  </data>
+  <data name="Filter_Yes" xml:space="preserve">
+    <value>Yes</value>
+  </data>
+  <data name="Filter_ClearAll" xml:space="preserve">
+    <value>Clear all</value>
+  </data>
+  <data name="Filter_ShowResults" xml:space="preserve">
+    <value>Show results</value>
+  </data>
+
+  <data name="Actions_Edit" xml:space="preserve">
+    <value>Edit</value>
+  </data>
+  <data name="Actions_Delete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+</root>

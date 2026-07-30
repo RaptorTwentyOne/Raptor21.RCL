@@ -1,0 +1,78 @@
+THIRD-PARTY NOTICES
+===================
+
+Raptor21.RCL contains source code ported from the third-party projects listed below. Each notice
+names the files it applies to.
+
+-------------------------------------------------------------------------------
+Blazor-ApexCharts
+-------------------------------------------------------------------------------
+
+Applies to        : Raptor21.RCL/Charts/Models and Raptor21.RCL/Charts/Serialization
+
+Source repository : https://github.com/apexcharts/Blazor-ApexCharts
+Ported from       : src/Blazor-ApexCharts/Models/ and src/Blazor-ApexCharts/Internal/
+License           : MIT
+
+What was taken: the C# chart-option model (the typed representation of the ApexCharts.js option
+surface) and the System.Text.Json converters that serialize it. The Blazor components, the
+JavaScript interop layer, the chart service, and the data-binding/data-point layer were not taken.
+
+What was changed: namespaces (ApexCharts -> Raptor21.RCL.Charts.Models, ApexCharts.Internal ->
+Raptor21.RCL.Charts.Serialization), the converters were made public, members that depended on
+Blazor or JS interop were removed, and the TItem type parameter was dropped because the
+data-binding layer it named was not ported. The option properties, their types, and their
+documentation comments are otherwise unchanged, so the upstream ApexCharts documentation applies
+to them directly.
+
+Verbatim license text as published by the project:
+
+MIT License
+
+Copyright (c) 2020 Joakim Dangården
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+-------------------------------------------------------------------------------
+Rizzy
+-------------------------------------------------------------------------------
+
+Source repository : https://github.com/JalexSocial/Rizzy
+License           : MIT
+
+Applies to        : Raptor21.RCL/Htmx (9 files), Raptor21.RCL/Composition (7 files),
+                    Raptor21.RCL/Mvc (3 files), Raptor21.RCL/Rendering (2 files), and
+                    Raptor21.RCL/Client/src/glue (antiforgery.ts, confirmation.ts, nonce.ts).
+                    Each of those files carries an "Adapted from Rizzy" header naming the
+                    upstream type it derives from.
+
+What was taken: the htmx request/response abstraction (header names, swap styles, request and
+response context), the composition layer that renders Razor components as full pages or htmx
+fragments, the MVC controller/view-service surface, the component parameter builder, and the
+client-side antiforgery, confirmation and nonce hooks.
+
+What was changed: namespaces were changed to Raptor21.RCL.*, the source-generator-based
+parameter and configuration machinery was dropped, the htmx configuration record was reduced to
+the antiforgery block, and several behaviours were corrected (see each type's documentation).
+
+>>> ACTION REQUIRED BEFORE RELEASE <<<
+The verbatim MIT license text for Rizzy, including its copyright line, has not been reproduced
+here. MIT requires the copyright notice and the permission notice to be included with any
+substantial portion of the software. Copy the LICENSE file from the upstream repository into
+this section before publishing.

@@ -1,0 +1,62 @@
+@if (Fieldset)
+{
+    <fieldset class="@CssClass">
+        @Legend
+        @ChildContent
+    </fieldset>
+}
+else
+{
+    <div class="@CssClass">
+        @Legend
+        @ChildContent
+    </div>
+}
+
+@code {
+    /// <summary>Label text. Omit to render the wrapper with no label — for a control that carries its own.</summary>
+    [Parameter] public string? Label { get; set; }
+
+    /// <summary>The <c>id</c> of the control this labels, so clicking the label focuses it.</summary>
+    [Parameter] public string? For { get; set; }
+
+    /// <summary>Append a star and mark the field visually required.</summary>
+    [Parameter] public bool Required { get; set; }
+
+    /// <summary>Muted helper text shown after the label.</summary>
+    [Parameter] public string? Hint { get; set; }
+
+    /// <summary>Render as a <c>&lt;fieldset&gt;</c>/<c>&lt;legend&gt;</c> instead of <c>&lt;div&gt;</c>/<c>&lt;label&gt;</c>.</summary>
+    [Parameter] public bool Fieldset { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private string CssClass => string.IsNullOrWhiteSpace(Class) ? "rg-field" : $"rg-field {Class}";
+
+    private RenderFragment? Legend => string.IsNullOrEmpty(Label) ? null : LabelFragment;
+
+    private void LabelFragment(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder builder)
+    {
+        builder.OpenElement(0, Fieldset ? "legend" : "label");
+        builder.AddAttribute(1, "class", "rg-label");
+        if (!Fieldset && !string.IsNullOrEmpty(For)) builder.AddAttribute(2, "for", For);
+        builder.AddContent(3, Label);
+        if (Required)
+        {
+            builder.OpenElement(4, "span");
+            builder.AddAttribute(5, "aria-hidden", "true");
+            builder.AddContent(6, " *");
+            builder.CloseElement();
+        }
+        if (!string.IsNullOrEmpty(Hint))
+        {
+            builder.OpenElement(7, "span");
+            builder.AddAttribute(8, "class", "rg-label-hint");
+            builder.AddContent(9, Hint);
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+    }
+}

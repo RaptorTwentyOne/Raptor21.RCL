@@ -1,0 +1,56 @@
+<div class="rg-modal" data-rg-component="modal"
+     aria-labelledby="@(string.IsNullOrEmpty(Title) ? null : _titleId)"
+     data-rg-modal-static="@(Static ? "" : null)">
+    <div class="@DialogClass" data-rg-modal-dialog>
+        @if (!string.IsNullOrEmpty(Title) || Dismissible)
+        {
+            <div class="rg-modal-head">
+                @if (!string.IsNullOrEmpty(Title))
+                {
+                    <h2 class="rg-modal-title" id="@_titleId">@Title</h2>
+                }
+                @if (Dismissible)
+                {
+                    <button type="button" class="rg-modal-x" data-rg-modal-close aria-label="Close">×</button>
+                }
+            </div>
+        }
+        <div class="rg-modal-body">
+            @ChildContent
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>Heading text. Omit to render no header — the content then owns the whole dialog.</summary>
+    [Parameter] public string? Title { get; set; }
+
+    [Parameter] public ModalSize Size { get; set; } = ModalSize.Medium;
+
+    /// <summary>Suppresses dismissal by backdrop click and Escape (destructive confirmations).</summary>
+    [Parameter] public bool Static { get; set; }
+
+    /// <summary>Render the close (×) button in the header.</summary>
+    [Parameter] public bool Dismissible { get; set; } = true;
+
+    /// <summary>Extra classes on the dialog element.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private readonly string _titleId = $"rg-modal-title-{Guid.NewGuid():N}";
+
+    private string DialogClass =>
+        string.IsNullOrWhiteSpace(Class)
+            ? $"rg-modal-dialog rg-modal-{SizeClass(Size)}"
+            : $"rg-modal-dialog rg-modal-{SizeClass(Size)} {Class}";
+
+    private static string SizeClass(ModalSize size) => size switch
+    {
+        ModalSize.Small => "sm",
+        ModalSize.Large => "lg",
+        ModalSize.ExtraLarge => "xl",
+        ModalSize.Full => "full",
+        _ => "md",
+    };
+}

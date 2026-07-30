@@ -1,0 +1,50 @@
+@typeparam TModel
+@attribute [CascadingTypeParameter(nameof(TModel))]
+
+<CascadingValue TValue="RaptorFilterFieldCollector<TModel>" Value="_collector" IsFixed="true">
+    @ChildContent
+    <RaptorFilterRegion TModel="TModel"
+                        Collector="_collector"
+                        Id="@Id"
+                        Endpoint="@Endpoint"
+                        Target="@Target"
+                        Include="@Include"
+                        Title="@Title"
+                        ShowSearch="ShowSearch"/>
+</CascadingValue>
+
+@code {
+
+    /// <summary>The &lt;RaptorFilterField&gt; children.</summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Stable id — used for the panel's DOM ids and its form field prefix (FilterSchema.Id).</summary>
+    [Parameter]
+    [EditorRequired]
+    public string Id { get; set; } = default!;
+
+    /// <summary>Where the panel posts (a RaptorPage htmx route, e.g. <c>/reports/orders/filter</c>).</summary>
+    [Parameter]
+    [EditorRequired]
+    public string Endpoint { get; set; } = default!;
+
+    /// <summary>CSS selector the panel's response replaces — for a grid, its region element.</summary>
+    [Parameter]
+    [EditorRequired]
+    public string Target { get; set; } = default!;
+
+    /// <summary>Extra selector whose fields ride along on every post — e.g. a grid's sort/column-order state.</summary>
+    [Parameter]
+    public string? Include { get; set; }
+
+    /// <summary>Panel title.</summary>
+    [Parameter]
+    public string Title { get; set; } = "Filters";
+
+    /// <summary>Show the free-text search box above the fields. Off by default.</summary>
+    [Parameter]
+    public bool ShowSearch { get; set; }
+
+    private readonly RaptorFilterFieldCollector<TModel> _collector = new();
+}

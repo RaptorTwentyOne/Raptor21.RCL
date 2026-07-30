@@ -1,0 +1,351 @@
+/* Grid is a flex column: header (thead, sticky) + a flex-filling scroll body + a footer that is
+   always visible. JS (fitGrid) sizes .raptor-grid to the remaining viewport height so the footer
+   pins to the bottom of the screen; only the body between header and footer scrolls. */
+.raptor-grid { border: 1px solid var(--rg-border); border-radius: .375rem; overflow: hidden; background: var(--rg-bg); color: var(--rg-fg); display: flex; flex-direction: column; min-height: 0; }
+/* Load failure. htmx leaves the previous rows in place on a non-2xx, so say so out loud
+   rather than letting stale rows read as the result of the user's filter. */
+.raptor-grid .rg-error { padding: .55rem .85rem; border-bottom: 1px solid var(--rg-danger-border); background: var(--rg-danger-bg); color: var(--rg-danger-fg); font-size: .8rem; font-weight: 500; }
+.raptor-grid .rg-error[hidden] { display: none; }
+.raptor-grid .rg-form { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.raptor-grid table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
+.raptor-grid thead .rg-head { background: var(--rg-header-bg); }
+.raptor-grid th, .raptor-grid td { border-bottom: 1px solid var(--rg-border); }
+.raptor-grid th { border-right: 1px solid var(--rg-border-soft); }
+.raptor-grid td:not(:last-child) { border-right: 1px solid var(--rg-border-soft); }
+.raptor-grid tbody tr:hover { background: var(--rg-hover); }
+/* Selected row highlight (class toggled by raptor-grid-client on selection) — wins over zebra/hover. */
+.raptor-grid tbody tr.rg-row-sel { background: var(--rg-sel); }
+.raptor-grid th { padding: .5rem 1rem; font-size: 12px; font-weight: 700; color: var(--rg-fg); white-space: nowrap; text-align: left; position: relative; }
+/* Cells truncate to one line by default; .rg-wrap columns wrap (auto-height). */
+.raptor-grid.rg-compact th { padding: .35rem .7rem; }
+.raptor-grid.rg-compact td { padding: .3rem .7rem; }
+.raptor-grid td { padding: .55rem 1rem; color: var(--rg-fg); vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.raptor-grid td.rg-wrap { white-space: normal; overflow: visible; text-overflow: clip; vertical-align: top; word-break: break-word; }
+.raptor-grid td.rg-wrap .rg-trunc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+/* Resize: frozen (px) layout only kicks in once a column is dragged; grids left alone stay auto/responsive. */
+.raptor-grid table.rg-resized { table-layout: fixed; }
+.raptor-grid table.rg-resized td:not(.rg-wrap):not(.rg-detail-cell) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.raptor-grid .rg-resize { position: absolute; top: 0; bottom: 0; inset-inline-end: -3px; width: 7px; cursor: col-resize; user-select: none; touch-action: none; z-index: 3; }
+.raptor-grid .rg-resize::after { content: ""; position: absolute; top: 20%; bottom: 20%; inset-inline-end: 3px; width: 2px; background: transparent; }
+.raptor-grid .rg-resize:hover::after { background: var(--rg-accent); }
+body.rg-col-resizing, body.rg-col-resizing * { cursor: col-resize !important; }
+body.rg-col-resizing { user-select: none !important; }
+body.rg-col-resizing .raptor-grid .rg-resize::after { background: var(--rg-accent); }
+/* Reorder: draggable data-column headers + drop indicator. */
+.raptor-grid th.rg-reorder { cursor: grab; }
+.raptor-grid th.rg-reorder:active { cursor: grabbing; }
+.raptor-grid th.rg-dragging { opacity: .45; }
+.raptor-grid th.rg-drop-left { box-shadow: inset 2px 0 0 var(--rg-accent), inset 0 -1px 0 var(--rg-border); }
+.raptor-grid th.rg-drop-right { box-shadow: inset -2px 0 0 var(--rg-accent), inset 0 -1px 0 var(--rg-border); }
+/* Inline editing */
+.raptor-grid td.rg-editable { cursor: text; }
+.raptor-grid td.rg-editable:hover { outline: 1px solid var(--rg-accent); outline-offset: -1px; }
+.raptor-grid td.rg-editing { overflow: visible; white-space: normal; padding-top: .35rem; padding-bottom: .35rem; }
+.raptor-grid td.rg-saving { opacity: .5; pointer-events: none; }
+.raptor-grid .rg-edit-input { width: 100%; box-sizing: border-box; border: 1px solid var(--rg-accent); border-radius: .25rem; background: var(--rg-input-bg); color: inherit; padding: .3rem .45rem; font: inherit; }
+.raptor-grid .rg-edit-input:focus { outline: none; box-shadow: 0 0 0 2px rgba(59,130,246,.35); }
+.raptor-grid .rg-edit-error { display: block; margin-top: .25rem; font-size: .7rem; color: var(--rg-danger-fg); }
+/* The header row: label takes the slack, the funnel keeps its size. min-width:0 lets the flex child
+   actually shrink — a flex item's default min-width is its content, which lets a long title push the
+   funnel out and under the next column. */
+.raptor-grid .rg-hd { display: flex; align-items: center; gap: .4rem; min-width: 0; }
+.raptor-grid .rg-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.raptor-grid .rg-sort { flex: 1 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: .25rem; cursor: pointer; background: none; border: 0; color: inherit; font: inherit; font-weight: 600; padding: .25rem 0; text-align: left; }
+/* Truncate the label inside the sort button, but never the sort arrow beside it. */
+.raptor-grid .rg-sort > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.raptor-grid .rg-sort .rg-arrow, .raptor-grid .rg-sort .rg-arrow-idle { flex: 0 0 auto; }
+.raptor-grid .rg-sort:hover { color: var(--rg-accent); }
+.raptor-grid .rg-sort .rg-arrow { color: var(--rg-accent); }
+.raptor-grid .rg-sort .rg-arrow-idle { opacity: 0; }
+.raptor-grid .rg-sort:hover .rg-arrow-idle { opacity: .4; }
+/* The funnel never shrinks and never gets pushed out: flex:0 0 auto keeps its width, and because the
+   label beside it now truncates, a narrow column loses title characters rather than dropping the funnel
+   under the next column. min-width on the button guards against it collapsing to nothing. */
+.raptor-grid .rg-funnel { flex: 0 0 auto; min-width: 1.4rem; display: inline-flex; align-items: center; justify-content: center; width: 1.4rem; height: 1.4rem; border: 0; border-radius: .2rem; background: none; color: inherit; cursor: pointer; opacity: .4; }
+.raptor-grid .rg-funnel:hover { opacity: .85; background: rgba(0,0,0,.05); }
+.dark .raptor-grid .rg-funnel:hover { background: rgba(255,255,255,.08); }
+.raptor-grid .rg-funnel.active { opacity: 1; color: var(--rg-accent); }
+.raptor-grid .rg-empty { padding: 2.75rem 1rem; text-align: center; color: var(--rg-muted); }
+.raptor-grid .rg-ico.rg-empty-icon { display: block; margin: 0 auto .6rem; width: 2.25rem; height: 2.25rem; opacity: .35; }
+.raptor-grid .rg-empty-title { font-size: .875rem; font-weight: 600; color: var(--rg-fg); opacity: .75; }
+.raptor-grid .rg-empty-hint { margin-top: .2rem; font-size: .78rem; }
+.raptor-grid .rg-sel-cell { width: 2.75rem; text-align: center; padding-left: .5rem; padding-right: .5rem; }
+.raptor-grid .rg-sel-cell input { width: auto; margin: 0; cursor: pointer; vertical-align: middle; }
+.raptor-grid .rg-selbar { display: flex; align-items: center; gap: 1rem; padding: .5rem 1rem; background: rgba(59,130,246,.08); border-bottom: 1px solid rgba(0,0,0,.07); font-size: .8125rem; }
+.dark .raptor-grid .rg-selbar { background: rgba(59,130,246,.14); border-bottom-color: rgba(255,255,255,.07); }
+.raptor-grid .rg-selbar-count { font-weight: 600; color: var(--rg-accent); }
+.raptor-grid .rg-selbar-clear { color: inherit; opacity: .7; background: none; border: 0; cursor: pointer; text-decoration: underline; }
+.raptor-grid .rg-selbar-clear:hover { opacity: 1; }
+.raptor-grid .rg-foot { border-top: 1px solid rgba(0,0,0,.07); }
+.dark .raptor-grid .rg-foot { border-top-color: rgba(255,255,255,.07); }
+/* Painted with --rg-input-bg. A host's own global form styling can outrank this and render them at the
+   page background instead; the library does not force the token with !important. */
+.raptor-grid .rg-select { border: 1px solid var(--rg-input-border); border-radius: .25rem; background-color: var(--rg-input-bg); color: inherit; padding: .25rem 1.25rem .25rem .4rem; }
+.raptor-grid .rg-nav { display: inline-flex; align-items: center; justify-content: center; min-width: 1.75rem; height: 1.75rem; border: 1px solid var(--rg-input-border); border-radius: .25rem; background: var(--rg-input-bg); color: inherit; cursor: pointer; }
+.raptor-grid .rg-nav:hover:not(:disabled) { border-color: var(--rg-accent); color: var(--rg-accent); }
+.raptor-grid .rg-nav:disabled { opacity: .4; cursor: not-allowed; }
+/* Scroll body: always a bounded, flex-filling viewport with a sticky header. Both axes scroll here
+   — vertical for rows, horizontal for wide tables and pinned (sticky) columns. */
+.raptor-grid .rg-scrollwrap { position: relative; flex: 1 1 auto; min-height: 0; overflow: auto; }
+/* The sticky cell itself carries NO background: mobile Safari samples its chrome tint from fixed AND
+   sticky elements near the viewport top, and a solid header bg there paints the status bar. The opaque
+   header surface lives on an absolute ::before layer instead — Safari's sampler skips absolute children;
+   visually identical. */
+.raptor-grid thead th { position: sticky; top: 0; z-index: 4; background: transparent;
+    border-bottom: 0; border-right: 0;
+    box-shadow: inset 0 -1px 0 var(--rg-border), inset -1px 0 0 var(--rg-border-soft); }
+.raptor-grid thead th::before { content: ''; position: absolute; inset: 0; z-index: -1; background: var(--rg-header-bg); }
+/* Nested grids (inside a master-detail panel) don't fill the viewport — they get a bounded body. */
+.raptor-grid.rg-nested .rg-scrollwrap { max-height: 60vh; }
+.raptor-grid tr.rg-sentinel td.rg-loading-row { text-align: center; padding: .85rem 1rem; color: var(--rg-muted); }
+/* Filter popups live at form level and are portaled visually via position:fixed (set by JS). */
+.raptor-grid .rg-pop { position: fixed; z-index: 60; display: none; width: 15rem; padding: .625rem; border: 1px solid var(--rg-border); border-radius: .375rem; background: var(--rg-surface); color: var(--rg-fg); box-shadow: 0 10px 30px rgba(0,0,0,.18); }
+.dark .raptor-grid .rg-pop { box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+.raptor-grid .rg-pop.rg-open { display: block; }
+.raptor-grid .rg-pop-label { font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; opacity: .55; margin-bottom: .4rem; }
+.raptor-grid .rg-pop-op, .raptor-grid .rg-pop-input { width: 100%; margin-bottom: .45rem; border: 1px solid var(--rg-input-border); border-radius: .25rem; background-color: var(--rg-input-bg); color: inherit; padding: .35rem .5rem; font-size: .8125rem; }
+.raptor-grid .rg-pop-op:focus, .raptor-grid .rg-pop-input:focus { outline: none; border-color: var(--rg-accent); box-shadow: 0 0 0 1px var(--rg-accent); }
+.raptor-grid .rg-pop-set { max-height: 15rem; overflow-y: auto; margin-bottom: .35rem; }
+.raptor-grid .rg-pop-check { display: flex; align-items: center; gap: .5rem; padding: .25rem .1rem; font-size: .8125rem; cursor: pointer; }
+.raptor-grid .rg-pop-check input { width: auto; margin: 0; }
+.raptor-grid .rg-pop-actions { display: flex; justify-content: flex-end; }
+.raptor-grid .rg-pop-clear { font-size: .75rem; color: var(--rg-accent); background: none; border: 0; cursor: pointer; padding: .1rem .2rem; }
+.raptor-grid .rg-pop-clear:hover { text-decoration: underline; }
+/* --- Self-contained cosmetics (no external utility framework or icon font) --- */
+.raptor-grid { color: #1f2937; }
+.dark .raptor-grid { color: #e5e7eb; }
+/* Self-contained htmx indicators inside the grid (e.g. an inline spinner on a control that opts in with
+   .htmx-indicator) follow htmx's own element — scoped under .raptor-grid so this never reaches the host. */
+.raptor-grid .htmx-indicator { opacity: 0; transition: opacity .15s; }
+.raptor-grid .htmx-request.htmx-indicator { opacity: 1; }
+.raptor-grid .rg-spin-lg { width: 1.5rem; height: 1.5rem; color: var(--rg-accent); }
+
+/* In-row loading: while the region answers a request (hx-indicator points at it, so it carries
+   .htmx-request), the existing rows stay put and just dim. Fresh markup arrives without the class, so
+   rows return to full opacity on their own. Skeleton rows are excluded: the deferred first-paint
+   skeleton animates itself and should not also be dimmed by its own triggering request. */
+.raptor-grid.htmx-request tbody tr:not(.rg-skeleton-row) { opacity: .45; pointer-events: none; transition: opacity .15s; }
+
+/* Row entry animation: every time a data row is (re)created — first paint, sort, filter, page —
+   it fades/slides in from slightly above. Skeleton rows have no [data-row-key] so they're excluded;
+   the hidden master-detail row is excluded too so its delay never collides with the row above it.
+   Only transform and opacity animate. */
+@keyframes rg-row-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+.raptor-grid tbody tr[data-row-key] {
+  animation: rg-row-in .35s ease both;
+}
+@for $i from 1 through 12 {
+  .raptor-grid tbody tr[data-row-key]:nth-child(#{$i}) {
+    animation-delay: #{($i - 1) * 35}ms;
+  }
+}
+.raptor-grid tbody tr.rg-detail-row {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .raptor-grid tbody tr[data-row-key] {
+    animation: none;
+  }
+}
+
+/* Deferred first paint: skeleton rows standing in for the page the immediate `load` request is
+   fetching. Sizing/spacing mirrors real data rows (.raptor-grid td) so nothing reflows once real
+   rows swap in; the bar itself (shimmer/animation) is the shared .rg-skeleton primitive. */
+.raptor-grid .rg-skeleton-row td { padding: .55rem 1rem; }
+.raptor-grid.rg-compact .rg-skeleton-row td { padding: .3rem .7rem; }
+.raptor-grid .rg-skeleton-bar { display: block; height: .7rem; border-radius: .2rem; }
+.raptor-grid .rg-skeleton-w40 { width: 40%; }
+.raptor-grid .rg-skeleton-w60 { width: 60%; }
+.raptor-grid .rg-skeleton-w70 { width: 70%; }
+.raptor-grid .rg-skeleton-w80 { width: 80%; }
+/* Footer layout. flex:0 0 auto so it never shrinks — always on screen. */
+.raptor-grid .rg-foot { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .5rem 1.25rem; padding: .625rem 1rem; font-size: .75rem; color: rgba(0,0,0,.55); background: inherit; }
+.dark .raptor-grid .rg-foot { color: rgba(255,255,255,.5); }
+.raptor-grid .rg-foot-cell { display: flex; align-items: center; gap: .5rem; }
+.raptor-grid .rg-pager { display: flex; align-items: center; gap: .25rem; }
+.raptor-grid .rg-nums { font-variant-numeric: tabular-nums; }
+.raptor-grid .rg-pageinfo { padding: 0 .5rem; }
+/* Status colours for built-in renderers. See themes/_light.scss for why they are their own pair
+   (--rg-ok-fg / --rg-bad-fg) rather than aliases of the --rg-success / --rg-danger button fills. A host
+   overrides them via --sp-ok-fg / --sp-bad-fg. */
+.raptor-grid .rg-ok { color: var(--rg-ok-fg); }
+.raptor-grid .rg-bad { color: var(--rg-bad-fg); }
+/* Cell/header text alignment */
+.raptor-grid .rg-al-left { text-align: left; }
+.raptor-grid .rg-al-center { text-align: center; }
+.raptor-grid .rg-al-right { text-align: right; }
+/* Form controls — override any host appearance reset that renders them as thin lines. */
+.raptor-grid input[type="checkbox"] {
+    -webkit-appearance: none; appearance: none; box-sizing: border-box;
+    width: 16px; height: 16px; min-width: 16px; margin: 0; padding: 0; cursor: pointer;
+    border: 1px solid rgba(0,0,0,.4); border-radius: 3px; background: #fff;
+    position: relative; vertical-align: middle; display: inline-block; flex: 0 0 auto;
+    transition: background .12s ease, border-color .12s ease;
+}
+.dark .raptor-grid input[type="checkbox"] { border-color: rgba(255,255,255,.45); background: rgba(255,255,255,.06); }
+.raptor-grid input[type="checkbox"]:hover { border-color: var(--rg-accent); }
+.raptor-grid input[type="checkbox"]:checked,
+.raptor-grid input[type="checkbox"]:indeterminate { background: var(--rg-accent); border-color: var(--rg-accent); }
+.raptor-grid input[type="checkbox"]:checked::after {
+    content: ""; position: absolute; left: 5px; top: 2px; width: 4px; height: 8px;
+    border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+.raptor-grid input[type="checkbox"]:indeterminate::after {
+    content: ""; position: absolute; left: 3px; top: 6.5px; width: 8px; height: 2px; background: #fff; border-radius: 1px;
+}
+.raptor-grid input[type="checkbox"]:focus-visible { outline: 2px solid var(--rg-accent); outline-offset: 1px; }
+/* Selection checkboxes hide by default and reveal on row/header hover, or stay visible when checked. */
+.raptor-grid .rg-sel-row, .raptor-grid .rg-sel-all { opacity: 0; transition: opacity .12s ease; }
+.raptor-grid tbody tr:hover .rg-sel-row,
+.raptor-grid .rg-sel-row:checked,
+.raptor-grid thead:hover .rg-sel-all,
+.raptor-grid .rg-sel-all:checked,
+.raptor-grid .rg-sel-all:indeterminate,
+.raptor-grid tbody tr.rg-row-sel .rg-sel-row { opacity: 1; }
+/* Native-looking select caret (down chevron), since appearance is reset for consistency. */
+.raptor-grid select {
+    -webkit-appearance: none; appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 10l5 5 5-5z' fill='%239aa0a6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right .35rem center; background-size: 1.05rem;
+}
+.raptor-grid .rg-select, .raptor-grid .rg-pop-op { padding-right: 1.6rem; }
+/* Inline-SVG icon system: currentColor-tinted masks, zero external font. */
+.raptor-grid .rg-ico { display: inline-block; width: 1em; height: 1em; vertical-align: -.125em; background-color: currentColor; -webkit-mask: var(--rg-ico) no-repeat center / contain; mask: var(--rg-ico) no-repeat center / contain; }
+.raptor-grid .rg-ico-spin { animation: rg-spin .8s linear infinite; }
+@keyframes rg-spin { to { transform: rotate(360deg); } }
+.raptor-grid .rg-ico-filter { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 5h18v2H3zM6 11h12v2H6zM10 17h4v2h-4z'/%3E%3C/svg%3E"); }
+.raptor-grid .rg-ico-sort-asc { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 8l6 9H6z'/%3E%3C/svg%3E"); }
+.raptor-grid .rg-ico-sort-desc { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 16L6 7h12z'/%3E%3C/svg%3E"); }
+.raptor-grid .rg-ico-sort { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 4l5 6H7zM12 20l-5-6h10z'/%3E%3C/svg%3E"); }
+.raptor-grid .rg-ico-first { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M11 7v10l-6-5zM18 7v10l-6-5z'/%3E%3C/svg%3E"); }
+.raptor-grid .rg-ico-prev { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M15 7v10l-6-5z'/%3E%3C/svg%3E"); }
+.raptor-grid .rg-ico-next { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9 7v10l6-5z'/%3E%3C/svg%3E"); }
+.raptor-grid .rg-ico-last { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M13 7v10l6-5zM6 7v10l6-5z'/%3E%3C/svg%3E"); }
+.raptor-grid .rg-ico-spinner { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 3a9 9 0 1 0 9 9h-2.2A6.8 6.8 0 1 1 12 5.2z'/%3E%3C/svg%3E"); }
+.raptor-grid .rg-ico-check { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-1.2 14.2l-4-4 1.5-1.5 2.5 2.5 5-5 1.5 1.5z'/%3E%3C/svg%3E"); }
+.raptor-grid .rg-ico-empty { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M20 13h-4a4 4 0 0 1-8 0H4v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1zm-.1-2-2.6-5.4A1 1 0 0 0 16.4 5H7.6a1 1 0 0 0-.9.6L4.1 11H10v1a2 2 0 0 0 4 0v-1z'/%3E%3C/svg%3E"); }
+.raptor-grid .rg-ico-close { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm3.5 12.1l-1.4 1.4L12 13.4l-2.1 2.1-1.4-1.4 2.1-2.1-2.1-2.1 1.4-1.4 2.1 2.1 2.1-2.1 1.4 1.4-2.1 2.1z'/%3E%3C/svg%3E"); }
+.raptor-grid .rg-ico-chevron { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9.3 6.7a1 1 0 0 0 0 1.4L13.2 12l-3.9 3.9a1 1 0 1 0 1.4 1.4l4.6-4.6a1 1 0 0 0 0-1.4L10.7 6.7a1 1 0 0 0-1.4 0z'/%3E%3C/svg%3E"); }
+/* Master-detail: leading expand toggle + full-width detail row. */
+.raptor-grid .rg-col-expand { width: 2.5rem; }
+.raptor-grid .rg-expand-cell { width: 2.5rem; text-align: center; padding-left: .25rem; padding-right: .25rem; }
+.raptor-grid .rg-expand { display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; border: 0; border-radius: .2rem; background: none; color: inherit; cursor: pointer; opacity: .6; }
+.raptor-grid .rg-expand:hover { opacity: 1; background: rgba(0,0,0,.06); }
+.dark .raptor-grid .rg-expand:hover { background: rgba(255,255,255,.09); }
+.raptor-grid .rg-expand .rg-ico-chevron { transition: transform .15s ease; }
+.raptor-grid .rg-expand[aria-expanded="true"] { opacity: 1; color: var(--rg-accent); }
+.raptor-grid .rg-expand[aria-expanded="true"] .rg-ico-chevron { transform: rotate(90deg); }
+.raptor-grid tr.rg-detail-row:hover { background: transparent; }
+/* overflow:visible is required so the sticky detail child isn't clipped by the base td overflow:hidden. */
+.raptor-grid tr.rg-detail-row > .rg-detail-cell { padding: 0; overflow: visible; background: rgba(0,0,0,.025); border-bottom: 1px solid rgba(0,0,0,.09); }
+.dark .raptor-grid tr.rg-detail-row > .rg-detail-cell { background: rgba(0,0,0,.2); border-bottom-color: rgba(255,255,255,.09); }
+/* Detail content sticks to the left edge of the scroll viewport and is sized (by JS) to the
+   viewport's visible width, so it never stretches to the full (horizontally-scrolled) table width. */
+.raptor-grid tr.rg-detail-row > .rg-detail-cell > .rg-detail { position: sticky; left: 0; box-sizing: border-box; overflow: hidden; }
+.raptor-grid .rg-detail-loading { display: flex; align-items: center; gap: .5rem; padding: 1rem; opacity: .6; }
+/* Pinned (sticky) columns — the client sets position/left/right/z-index; these supply the opaque
+   backgrounds (so scrolled cells don't show through) matching zebra/hover/selection, plus a
+   divider shadow. Header pinned cells sit above everything (z from JS). */
+.raptor-grid td.rg-pin { background: var(--rg-bg); }
+.raptor-grid tbody tr:hover td.rg-pin { background: linear-gradient(var(--rg-hover), var(--rg-hover)), var(--rg-bg); }
+.raptor-grid tbody tr.rg-row-sel td.rg-pin { background: linear-gradient(var(--rg-sel), var(--rg-sel)), var(--rg-bg); }
+.raptor-grid thead th.rg-pin { background: var(--rg-header-bg); }
+/* Sticky cells drop their collapsed borders — redraw the bottom (row) + side (column) borders,
+   plus the pinned-edge divider shadow, via box-shadow so pinned columns keep their gridlines. */
+.raptor-grid td.rg-pin, .raptor-grid th.rg-pin { box-shadow: inset 0 -1px 0 var(--rg-border); }
+.raptor-grid td.rg-pin-left, .raptor-grid th.rg-pin-left { box-shadow: inset 0 -1px 0 var(--rg-border), inset -1px 0 0 var(--rg-border-soft); }
+.raptor-grid td.rg-pin-right, .raptor-grid th.rg-pin-right { box-shadow: inset 0 -1px 0 var(--rg-border), inset 1px 0 0 var(--rg-border-soft); }
+.raptor-grid td.rg-pin-left.rg-pin-edge, .raptor-grid th.rg-pin-left.rg-pin-edge { box-shadow: inset 0 -1px 0 var(--rg-border), inset -1px 0 0 var(--rg-border-soft), var(--rg-pin-elevation-left); }
+.raptor-grid td.rg-pin-right.rg-pin-edge, .raptor-grid th.rg-pin-right.rg-pin-edge { box-shadow: inset 0 -1px 0 var(--rg-border), inset 1px 0 0 var(--rg-border-soft), var(--rg-pin-elevation-right); }
+/* Column groups: a centered spanning parent header above the leaf columns (two-row header). The
+   leaf row's sticky top offset (= group-row height) is set by JS so both rows stay pinned. */
+.raptor-grid th.rg-group { text-align: center; font-weight: 700; background: var(--rg-header-bg); }
+.raptor-grid thead .rg-leafrow th { top: 0; }
+/* ---- Mobile: stacked cards. JS adds .rg-cards when the grid is narrower than the breakpoint;
+   each row folds into a card with the column header (data-label) shown above its value. The
+   header row, colgroup widths, pinning and viewport-fit are all disabled in this mode. ---- */
+.raptor-grid.rg-cards { height: auto; }
+.raptor-grid.rg-cards .rg-form { display: block; }
+.raptor-grid.rg-cards .rg-scrollwrap { overflow: visible; max-height: none; }
+.raptor-grid.rg-cards table { display: block; width: 100% !important; min-width: 0 !important; }
+.raptor-grid.rg-cards colgroup, .raptor-grid.rg-cards thead { display: none; }
+.raptor-grid.rg-cards tbody { display: block; }
+.raptor-grid.rg-cards tbody tr { display: block; margin: .5rem; border: 1px solid var(--rg-border); border-radius: .5rem; background: var(--rg-bg); box-shadow: 0 1px 3px rgba(0,0,0,.06); overflow: hidden; }
+/* The card display:block above outranks the [hidden] UA rule — restore it so collapsed detail rows
+   (and any hidden row) stay hidden instead of showing their "Loading…" placeholder. */
+.raptor-grid.rg-cards tbody tr[hidden] { display: none; }
+.dark .raptor-grid.rg-cards tbody tr { border-color: rgba(255,255,255,.12); background: rgba(255,255,255,.02); }
+.raptor-grid.rg-cards tbody tr:hover { background: var(--rg-bg); }
+.raptor-grid.rg-cards tbody tr.rg-row-sel { background: rgba(59,130,246,.1); }
+.dark .raptor-grid.rg-cards tbody tr.rg-row-sel { background: rgba(59,130,246,.18); }
+.raptor-grid.rg-cards td { display: block; width: auto !important; text-align: left; white-space: normal; overflow: visible; text-overflow: clip; padding: .5rem .8rem; border: 0; border-bottom: 1px solid rgba(0,0,0,.06); box-shadow: none !important; position: static !important; }
+.dark .raptor-grid.rg-cards td { border-bottom-color: rgba(255,255,255,.06); }
+.raptor-grid.rg-cards td:last-child { border-bottom: 0; }
+.raptor-grid.rg-cards td::before { content: attr(data-label); display: block; font-size: .66rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; opacity: .5; margin-bottom: .15rem; }
+.raptor-grid.rg-cards td[data-label=""]::before, .raptor-grid.rg-cards td:not([data-label])::before { content: none; }
+.raptor-grid.rg-cards .rg-trunc { white-space: normal; overflow: visible; text-overflow: clip; }
+/* Leading expand/select controls sit at the top of the card, unlabelled. */
+.raptor-grid.rg-cards td.rg-expand-cell, .raptor-grid.rg-cards td.rg-sel-cell { display: inline-block; width: auto !important; border-bottom: 0; padding: .5rem .45rem; vertical-align: middle; }
+.raptor-grid.rg-cards td.rg-expand-cell::before, .raptor-grid.rg-cards td.rg-sel-cell::before { content: none; }
+.raptor-grid.rg-cards td.rg-empty { text-align: center; }
+/* Master-detail row folds as its own block under the card. */
+.raptor-grid.rg-cards tr.rg-detail-row { display: block; margin: -.35rem .5rem .5rem; }
+.raptor-grid.rg-cards td.rg-detail-cell { display: block; width: auto !important; }
+.raptor-grid.rg-cards td.rg-detail-cell::before { content: none; }
+.raptor-grid.rg-cards .rg-detail { position: static; width: auto !important; }
+/* Custom mobile card (GridDefinition.CardRender). Hidden in the table; in card mode it replaces the
+   auto label:value fold and IS the whole list item. Tapping the card toggles master-detail. */
+.raptor-grid .rg-card { display: none; }
+/* Hide the auto-fold cells ONLY for THIS grid's own table (child chain) — a plain descendant
+   selector would also blank a nested grid's cells inside the master-detail panel. */
+.raptor-grid.rg-cards.rg-has-cards > .rg-form > .rg-scrollwrap > table > tbody > tr > td:not(.rg-card):not(.rg-detail-cell):not(.rg-empty) { display: none; }
+.raptor-grid.rg-cards.rg-has-cards td.rg-card { display: block; width: auto !important; padding: 0; border: 0; position: relative !important; overflow: hidden; }
+.raptor-grid.rg-cards.rg-has-cards td.rg-card::before { content: none; }
+.raptor-grid.rg-cards.rg-has-cards tbody tr[data-row-key]:has(.rg-expand) { cursor: pointer; }
+/* Subtle tap ripple (Material-ish), theme-adaptive via currentColor; JS positions it at the tap. */
+.raptor-grid .rg-ripple { position: absolute; border-radius: 50%; transform: scale(0); pointer-events: none; background: currentColor; opacity: .1; animation: rg-ripple .45s ease-out forwards; }
+@keyframes rg-ripple { to { transform: scale(2.4); opacity: 0; } }
+/* Card chevron reflects expand state (row .rg-open), mirroring the desktop button chevron. */
+.raptor-grid .rg-card .rg-ico-chevron { transition: transform .15s ease; }
+.raptor-grid tr.rg-open .rg-card .rg-ico-chevron { transform: rotate(90deg); }
+/* Card content skeleton for Card/CardTemplate authors: a title+subtitle main block, an optional badges
+   row, and a right-aligned value+meta side, closed off by a chevron. Reusable as CSS classes so a card
+   template does not have to repeat inline styles. */
+.rg-cardrow { display: flex; align-items: center; gap: .75rem; padding: .7rem .85rem; }
+.rg-cardrow-main { min-width: 0; flex: 1 1 auto; }
+.rg-cardrow-title { font-weight: 600; font-size: .9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rg-cardrow-sub { opacity: .6; font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rg-cardrow-badges { margin-top: .25rem; }
+.rg-cardrow-side { text-align: right; flex: 0 0 auto; }
+.rg-cardrow-value { font-weight: 700; font-size: .9rem; }
+.rg-cardrow-meta { opacity: .5; font-size: .72rem; white-space: nowrap; max-width: 9rem; overflow: hidden; text-overflow: ellipsis; }
+.rg-cardrow-chevron { opacity: .35; flex: 0 0 auto; }
+/* Row-actions kebab slot on cards (RaptorActionsMenu) — keeps its hit area clear of the card's own
+   expand/detail tap target. */
+.rg-cardrow-actions { flex: 0 0 auto; display: inline-flex; align-items: center; }
+/* ---- Mobile filter drawer. Desktop: FAB/backdrop/head/actions hidden and the drawer is inert
+   (display:contents) so the per-column popups still float from their funnels. Card mode: the FAB
+   opens a right-side drawer holding the same popups stacked as sections. ---- */
+.raptor-grid .rg-filter-fab, .raptor-grid .rg-filter-backdrop, .raptor-grid .rg-filter-head, .raptor-grid .rg-filter-actions { display: none; }
+.raptor-grid .rg-filter-drawer, .raptor-grid .rg-filter-body { display: contents; }
+.raptor-grid.rg-cards .rg-filter-fab { display: inline-flex; align-items: center; gap: .4rem; position: fixed; right: 1rem; bottom: 1rem; z-index: 45; padding: .6rem .95rem; border: 0; border-radius: 9999px; background: var(--rg-accent); color: #fff; font-size: .85rem; font-weight: 600; box-shadow: 0 4px 14px rgba(0,0,0,.3); cursor: pointer; }
+.raptor-grid.rg-cards .rg-filter-fab .rg-filter-count { min-width: 1.15rem; height: 1.15rem; padding: 0 .3rem; border-radius: 9999px; background: rgba(255,255,255,.92); color: var(--rg-accent); font-size: .7rem; line-height: 1.15rem; text-align: center; }
+.raptor-grid.rg-cards.rg-filters-open .rg-filter-backdrop { display: block; position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.45); }
+.raptor-grid.rg-cards .rg-filter-drawer { display: flex; flex-direction: column; position: fixed; top: 0; right: 0; bottom: 0; width: min(86vw, 360px); z-index: 51; background: var(--rg-bg); box-shadow: -8px 0 24px rgba(0,0,0,.3); transform: translateX(100%); transition: transform .25s ease; }
+.raptor-grid.rg-cards.rg-filters-open .rg-filter-drawer { transform: translateX(0); }
+.raptor-grid.rg-cards .rg-filter-head { display: flex; align-items: center; justify-content: space-between; padding: .85rem 1rem; border-bottom: 1px solid rgba(0,0,0,.1); font-weight: 600; font-size: .95rem; }
+.dark .raptor-grid.rg-cards .rg-filter-head { border-bottom-color: rgba(255,255,255,.12); }
+.raptor-grid.rg-cards .rg-filter-x { border: 0; background: none; color: inherit; cursor: pointer; opacity: .7; padding: .2rem; font-size: 1.05rem; }
+.raptor-grid.rg-cards .rg-filter-body { display: block; flex: 1 1 auto; overflow-y: auto; padding: .25rem .5rem; }
+.raptor-grid.rg-cards .rg-filter-actions { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .75rem 1rem; border-top: 1px solid rgba(0,0,0,.1); }
+.dark .raptor-grid.rg-cards .rg-filter-actions { border-top-color: rgba(255,255,255,.12); }
+.raptor-grid.rg-cards .rg-filter-done { padding: .4rem 1.1rem; min-width: auto; width: auto; }
+/* Popups become stacked inline sections inside the drawer (override the floating popup styling). */
+.raptor-grid.rg-cards .rg-filter-body .rg-pop { display: block; position: static; width: auto; box-shadow: none; border: 0; border-bottom: 1px solid rgba(0,0,0,.07); border-radius: 0; padding: .65rem .4rem; }
+.dark .raptor-grid.rg-cards .rg-filter-body .rg-pop { border-bottom-color: rgba(255,255,255,.08); }
+.raptor-grid.rg-cards .rg-filter-body .rg-pop .rg-pop-actions { justify-content: flex-start; }
+/* Nested grids (inside a master-detail panel) don't get their own FAB — one filter entry per screen. */
+.raptor-grid .rg-detail .rg-filter-fab { display: none !important; }

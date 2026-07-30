@@ -1,0 +1,28 @@
+{
+  "name": "raptor21-client",
+  "version": "1.0.0",
+  "description": "Client bundle for the Raptor21 Razor Class Library — built by CI into wwwroot/dist and embedded in the NuGet package.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "rspack build --config rspack.config.mjs",
+    "watch": "rspack build --config rspack.config.mjs --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@rspack/cli": "^1.0.0",
+    "@rspack/core": "^1.0.0",
+    "@swc/core": "^1.7.0",
+    "css-loader": "^7.1.2",
+    "css-minimizer-webpack-plugin": "^7.0.0",
+    "sass": "^1.77.8",
+    "sass-loader": "^16.0.3",
+    "typescript": "^5.5.4",
+    "webpack-assets-manifest": "^5.2.1"
+  },
+  "dependencies": {
+    "@google/model-viewer": "^4.3.1",
+    "apexcharts": "^3.42.0",
+    "htmx.org": "^2.0.4"
+  }
+}

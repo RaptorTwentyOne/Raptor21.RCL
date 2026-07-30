@@ -1,0 +1,51 @@
+<label class="@CssClass" title="@Title">
+    @if (EmitHiddenFalse && !string.IsNullOrEmpty(Name))
+    {
+        <input type="hidden" name="@Name" value="false"/>
+    }
+    <input @attributes="Attributes"/>
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <span>@Label</span>
+    }
+</label>
+
+@code {
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Name { get; set; }
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public string Value { get; set; } = "true";
+    [Parameter] public bool Checked { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Title { get; set; }
+
+    /// <summary>Emit the hidden companion so an unchecked single-bool box still posts "false".</summary>
+    [Parameter] public bool EmitHiddenFalse { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public IReadOnlyDictionary<string, object?>? AdditionalAttributes { get; set; }
+
+    private string CssClass => string.IsNullOrWhiteSpace(Class) ? "rg-check" : $"rg-check {Class}";
+
+    private Dictionary<string, object?> Attributes
+    {
+        get
+        {
+            var a = new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["type"] = "checkbox",
+                ["value"] = Value,
+            };
+            if (!string.IsNullOrEmpty(Name)) a["name"] = Name;
+            if (!string.IsNullOrEmpty(Id)) a["id"] = Id;
+            if (Checked) a["checked"] = "checked";
+            if (Disabled) a["disabled"] = "disabled";
+            if (AdditionalAttributes is not null)
+                foreach (var kv in AdditionalAttributes)
+                    a[kv.Key] = kv.Value;
+            return a;
+        }
+    }
+}

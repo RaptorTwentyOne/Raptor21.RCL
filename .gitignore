@@ -1,0 +1,31 @@
+# Build output
+bin/
+obj/
+artifacts/
+*.user
+*.suo
+
+# The client bundle is COMMITTED on purpose — see Raptor21.RCL/wwwroot/dist/.
+# A .NET-only consumer must be able to clone, build and pack without Node installed, and the assembly
+# embeds this bundle, so an ignored dist would produce a silently asset-free package. CI rebuilds it from
+# Client/src with -p:RaptorBuildClient=true and the build fails if it is missing.
+Client/node_modules/
+node_modules/
+
+# Rspack/TS incidentals
+*.tsbuildinfo
+Client/dist/
+
+# NuGet
+*.nupkg
+*.snupkg
+
+# IDE
+.vs/
+.idea/
+.vscode/
+*.DotSettings.user
+
+# OS
+Thumbs.db
+.DS_Store

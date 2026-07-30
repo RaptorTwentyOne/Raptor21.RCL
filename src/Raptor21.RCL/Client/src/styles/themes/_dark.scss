@@ -1,0 +1,42 @@
+:root.dark,
+.dark {
+
+    --rg-bg: var(--sp-surface, #2b2b2b);
+    --rg-header-bg: var(--sp-header-bg, #363636);
+    --rg-surface: var(--sp-surface-2, #414141);
+    --rg-fg: var(--sp-fg, #fff);
+    --rg-muted: var(--sp-fg-muted, rgba(255,255,255,.55));
+    --rg-border: var(--sp-border, rgba(255,255,255,.15));
+    --rg-border-soft: var(--sp-border-soft, rgba(255,255,255,.07));
+    --rg-hover: var(--sp-hover, rgba(33,150,243,.15));
+    --rg-sel: var(--sp-sel, rgba(33,150,243,.30));
+    --rg-accent: var(--sp-accent, #2196f3);
+    --rg-input-bg: var(--sp-input-bg, #2b2b2b);
+    --rg-input-border: var(--sp-input-border, rgba(255,255,255,.20));
+    --rg-danger-fg: var(--sp-danger-fg, #fca5a5);
+    --rg-danger-bg: var(--sp-danger-bg, rgba(220,38,38,.14));
+    --rg-danger-border: var(--sp-danger-border, rgba(220,38,38,.40));
+    --rg-danger: var(--sp-danger, #ef4444);       /* solid fill for a destructive button */
+    --rg-success: var(--sp-success, #22c55e);      /* solid fill for a confirming button */
+    --rg-warning: var(--sp-warning, #f59e0b);      /* solid fill for a cautioning button */
+    /* Panel trio — see _light.scss. Lightened for a dark surface exactly as --rg-danger-fg is. */
+    --rg-warning-fg: var(--sp-warning-fg, #fcd34d);
+    --rg-warning-bg: var(--sp-warning-bg, rgba(245,158,11,.14));
+    --rg-warning-border: var(--sp-warning-border, rgba(245,158,11,.40));
+    --rg-info: var(--sp-info, #06b6d4);         /* solid fill for an informational button */
+    /* Boolean-cell glyph colours — see _light.scss for why these are their own tokens rather than aliases
+       of --rg-success / --rg-danger. Dark repeats light's values. */
+    --rg-ok-fg: var(--sp-ok-fg, #16a34a);
+    --rg-bad-fg: var(--sp-bad-fg, #dc2626);
+    --rg-pin-elevation-left: 6px 0 6px -4px rgba(0,0,0,.5);
+    --rg-pin-elevation-right: -6px 0 6px -4px rgba(0,0,0,.5);
+
+    /* Chart neutrals — see _light.scss for why these are their own hex tokens.
+     *
+     * The label does not change with the theme: that mid-grey is legible on both backgrounds. The grid
+     * does branch — light's near-white rule drawn on a dark panel is the brightest line on the screen.
+     * #3a3c3e is what the dark --rg-border composites to over the dark canvas, so the grid matches the
+     * borders the rest of the dark UI draws. */
+    --rg-chart-label: var(--sp-chart-label, #8c9097);
+    --rg-chart-grid: var(--sp-chart-grid, #3a3c3e);
+}

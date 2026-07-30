@@ -1,0 +1,69 @@
+@typeparam TRow
+@using System.Linq.Expressions
+@using Microsoft.AspNetCore.Components
+@using Raptor21.RCL.Grid
+
+@code {
+    [CascadingParameter] private RaptorColumnCollector<TRow>? Collector { get; set; }
+
+    /// <summary>Bound member — its name is the key, its value the default cell text. Mutually exclusive with Display.</summary>
+    [Parameter] public Expression<Func<TRow, object?>>? For { get; set; }
+
+    /// <summary>Display-only column identity (actions / chrome), when there is no backing member.</summary>
+    [Parameter] public string? Display { get; set; }
+
+    [Parameter] public string Header { get; set; } = "";
+
+    /// <summary>Typed cell renderer (pass a lambda, not a method group). Null = the bound member's value as text.</summary>
+    [Parameter] public Func<TRow, GridCell>? Cell { get; set; }
+
+    [Parameter] public GridFilterType Filter { get; set; } = GridFilterType.None;
+    [Parameter] public bool Sortable { get; set; }
+    [Parameter] public string? Permission { get; set; }
+    [Parameter] public int? Width { get; set; }
+    [Parameter] public int? Flex { get; set; }
+    [Parameter] public int? MinWidth { get; set; }
+    [Parameter] public string? Pinned { get; set; }
+    [Parameter] public string? Group { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter] public string? Align { get; set; }
+    [Parameter] public bool Wrap { get; set; }
+    [Parameter] public IReadOnlyList<GridSetOption>? SetOptions { get; set; }
+    [Parameter] public string? SetOptionsKey { get; set; }
+    [Parameter] public GridFilterDataType SetDataType { get; set; } = GridFilterDataType.Text;
+    [Parameter] public bool Editable { get; set; }
+    [Parameter] public string? Editor { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (Collector is null)
+            throw new InvalidOperationException("<RaptorColumn> must be nested inside <RaptorGridColumns>.");
+
+        var column = For is not null
+            ? GridColumn<TRow>.For(For, Header)
+            : !string.IsNullOrWhiteSpace(Display)
+                ? GridColumn<TRow>.Display(Display, Header)
+                : throw new InvalidOperationException("<RaptorColumn> needs either For (bound) or Display (chrome).");
+
+        Collector.Add(column with
+        {
+            Cell = Cell,
+            Filter = Filter,
+            Sortable = Sortable,
+            Permission = Permission,
+            Width = Width,
+            Flex = Flex,
+            MinWidth = MinWidth,
+            Pinned = Pinned,
+            Group = Group,
+            CssClass = CssClass,
+            Align = Align,
+            Wrap = Wrap,
+            SetOptions = SetOptions,
+            SetOptionsKey = SetOptionsKey,
+            SetDataType = SetDataType,
+            Editable = Editable,
+            Editor = Editor,
+        });
+    }
+}

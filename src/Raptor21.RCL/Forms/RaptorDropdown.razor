@@ -1,0 +1,69 @@
+<div class="@RootClass" data-rg-component="dropdown" @attributes="Flags">
+    <button type="button" class="@TriggerCssClass" data-rg-dropdown-trigger>
+        @Trigger
+    </button>
+    <div class="rg-dd-panel" data-rg-dropdown-panel>
+        @ChildContent
+    </div>
+</div>
+
+@code {
+
+    /// <summary>The trigger button's content.</summary>
+    [Parameter]
+    public RenderFragment? Trigger { get; set; }
+
+    /// <summary>The panel content — menu items carry <c>data-rg-dropdown-item</c>.</summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Panel is a menu of items; arrow keys navigate it and a click dismisses it.</summary>
+    [Parameter]
+    public bool Menu { get; set; }
+
+    /// <summary>Render a filter box that hides non-matching items.</summary>
+    [Parameter]
+    public bool Search { get; set; }
+
+    /// <summary>Clicking inside does not close it (filter panels, multi-step forms).</summary>
+    [Parameter]
+    public bool KeepOpen { get; set; }
+
+    /// <summary>Preferred side, e.g. <c>bottom-end</c>.</summary>
+    [Parameter]
+    public string? Placement { get; set; }
+
+    /// <summary>Match the panel width to the trigger.</summary>
+    [Parameter]
+    public bool MatchWidth { get; set; }
+
+    /// <summary>Extra classes on the trigger button (defaults to the neutral <c>rg-btn</c>).</summary>
+    [Parameter]
+    public string? TriggerClass { get; set; }
+
+    /// <summary>Extra classes on the dropdown root.</summary>
+    [Parameter]
+    public string? Class { get; set; }
+
+    /// <summary>Splatted onto the trigger button itself (aria-label, title, id, …) — not the root.</summary>
+    [Parameter(CaptureUnmatchedValues = true)]
+    public IReadOnlyDictionary<string, object?>? AdditionalAttributes { get; set; }
+
+    private string RootClass => string.IsNullOrWhiteSpace(Class) ? "rg-dropdown" : $"rg-dropdown {Class}";
+    private string TriggerCssClass => string.IsNullOrWhiteSpace(TriggerClass) ? "rg-btn" : $"rg-btn {TriggerClass}";
+
+    private Dictionary<string, object?> Flags
+    {
+        get
+        {
+            var a = new Dictionary<string, object?>(StringComparer.Ordinal);
+            if (Menu) a["data-rg-menu"] = "";
+            if (Search) a["data-rg-search"] = "";
+            if (KeepOpen) a["data-rg-keep-open"] = "";
+            if (MatchWidth) a["data-rg-match-width"] = "";
+            if (!string.IsNullOrEmpty(Placement)) a["data-rg-placement"] = Placement;
+            return a;
+        }
+    }
+
+}

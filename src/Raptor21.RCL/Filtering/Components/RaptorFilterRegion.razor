@@ -1,0 +1,30 @@
+@typeparam TModel
+@using Raptor21.RCL.Filtering
+
+<RaptorFilterPanel Schema="_schema"
+                    Endpoint="@Endpoint"
+                    Target="@Target"
+                    Include="@Include"
+                    Title="@Title"
+                    ShowSearch="ShowSearch"/>
+
+@code {
+    [Parameter, EditorRequired] public RaptorFilterFieldCollector<TModel> Collector { get; set; } = default!;
+    [Parameter, EditorRequired] public string Id { get; set; } = default!;
+    [Parameter, EditorRequired] public string Endpoint { get; set; } = default!;
+    [Parameter, EditorRequired] public string Target { get; set; } = default!;
+    [Parameter] public string? Include { get; set; }
+    [Parameter] public string Title { get; set; } = "Filters";
+    [Parameter] public bool ShowSearch { get; set; }
+
+    private FilterSchema _schema = default!;
+
+    protected override void OnInitialized()
+    {
+        _schema = new FilterSchema
+        {
+            Id = Id,
+            Fields = [.. Collector.Fields],
+        };
+    }
+}

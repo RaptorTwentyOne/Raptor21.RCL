@@ -1,0 +1,16 @@
+@use 'themes/light';
+@use 'themes/dark';
+
+/* Restores the platform meaning of the `hidden` attribute inside this library's subtrees.
+
+   The UA sheet's `[hidden] { display: none }` is a (0,1,0) rule, so any component rule that sets
+   `display` on a class outranks it and the element stays on screen with `hidden` set.
+
+   Scoped by class prefix rather than by ancestry: the select and dropdown panels are portalled to
+   <body> to escape clipping, so an ancestor-based rule never reaches them. */
+[class^='rg-'][hidden],
+[class*=' rg-'][hidden],
+.raptor-grid [hidden],
+.rf [hidden] {
+    display: none !important;
+}

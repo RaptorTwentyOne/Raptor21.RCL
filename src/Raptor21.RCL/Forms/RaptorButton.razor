@@ -1,0 +1,84 @@
+<button type="@Type" class="@CssClass" disabled="@Disabled" @attributes="Attributes">
+    @if (!string.IsNullOrEmpty(Icon))
+    {
+        <i class="@Icon" aria-hidden="true"></i>
+    }
+    @ChildContent
+    <span class="rg-btn-spin" aria-hidden="true"></span>
+</button>
+
+@code {
+
+    /// <summary>Visual style — maps to the <c>rg-btn-*</c> classes.</summary>
+    [Parameter]
+    public ButtonVariant Variant { get; set; } = ButtonVariant.Secondary;
+
+    [Parameter] public ButtonSize Size { get; set; } = ButtonSize.Medium;
+
+    /// <summary>Button behaviour. Defaults to <c>button</c>; set <c>submit</c> to submit the enclosing form.</summary>
+    [Parameter]
+    public string Type { get; set; } = "button";
+
+    /// <summary>An icon-font class rendered before the label, e.g. <c>ri-add-line</c>.</summary>
+    [Parameter]
+    public string? Icon { get; set; }
+
+    /// <summary>Square, icon-only button. Provide an <c>aria-label</c> so it stays accessible.</summary>
+    [Parameter]
+    public bool IconOnly { get; set; }
+
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Extra classes appended after the variant/size classes.</summary>
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Everything else (hx-*, id, title, aria-*, data-*) is splatted onto the button.</summary>
+    [Parameter(CaptureUnmatchedValues = true)]
+    public IReadOnlyDictionary<string, object?>? AdditionalAttributes { get; set; }
+
+    private static readonly string[] HtmxVerbs = ["hx-get", "hx-post", "hx-put", "hx-delete", "hx-patch"];
+
+    private string CssClass
+    {
+        get
+        {
+            var cls = "rg-btn";
+            cls += Variant switch
+            {
+                ButtonVariant.Primary => " rg-btn-primary",
+                ButtonVariant.Danger => " rg-btn-danger",
+                ButtonVariant.Success => " rg-btn-success",
+                ButtonVariant.Warning => " rg-btn-warning",
+                ButtonVariant.Info => " rg-btn-info",
+                ButtonVariant.Light => " rg-btn-light",
+                ButtonVariant.Outline => " rg-btn-outline",
+                ButtonVariant.Ghost => " rg-btn-ghost",
+                _ => string.Empty,
+            };
+            cls += Size switch
+            {
+                ButtonSize.Small => " rg-btn-sm",
+                ButtonSize.Large => " rg-btn-lg",
+                _ => string.Empty,
+            };
+            if (IconOnly) cls += " rg-btn-icon";
+            if (!string.IsNullOrWhiteSpace(Class)) cls += $" {Class}";
+            return cls;
+        }
+    }
+
+    private IReadOnlyDictionary<string, object?>? Attributes
+    {
+        get
+        {
+            if (AdditionalAttributes is null) return null;
+            if (AdditionalAttributes.ContainsKey("hx-disabled-elt")) return AdditionalAttributes;
+            if (!HtmxVerbs.Any(AdditionalAttributes.ContainsKey)) return AdditionalAttributes;
+            return new Dictionary<string, object?>(AdditionalAttributes) { ["hx-disabled-elt"] = "this" };
+        }
+    }
+
+}

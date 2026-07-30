@@ -1,0 +1,45 @@
+<div class="rg-state-host @Class" @attributes="AdditionalAttributes" data-rg-state-host="@State.Wire()">
+    <div class="rg-state" data-rg-state="content" hidden="@(State != RaptorState.Content)">@ChildContent</div>
+
+    @if (Loading is not null)
+    {
+        <div class="rg-state" data-rg-state="loading" hidden="@(State != RaptorState.Loading)">@Loading</div>
+    }
+    @if (Empty is not null)
+    {
+        <div class="rg-state" data-rg-state="empty" hidden="@(State != RaptorState.Empty)">@Empty</div>
+    }
+    @if (Error is not null)
+    {
+        <div class="rg-state" data-rg-state="error" hidden="@(State != RaptorState.Error)">@Error</div>
+    }
+</div>
+
+@code {
+
+    /// <summary>Which pane is showing. Resolved on the server, so the first paint is already correct.</summary>
+    [Parameter]
+    public RaptorState State { get; set; } = RaptorState.Content;
+
+    /// <summary>The real content.</summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>The loading pane. Omitted from the markup entirely when not supplied.</summary>
+    [Parameter] public RenderFragment? Loading { get; set; }
+
+    /// <summary>The empty-result pane. Omitted from the markup entirely when not supplied.</summary>
+    [Parameter] public RenderFragment? Empty { get; set; }
+
+    /// <summary>The error pane. Omitted from the markup entirely when not supplied.</summary>
+    [Parameter] public RenderFragment? Error { get; set; }
+
+    /// <summary>Extra classes on the host.</summary>
+    [Parameter]
+    public string? Class { get; set; }
+
+    /// <summary>Splatted onto the host element.</summary>
+    [Parameter(CaptureUnmatchedValues = true)]
+    public IReadOnlyDictionary<string, object>? AdditionalAttributes { get; set; }
+
+}
