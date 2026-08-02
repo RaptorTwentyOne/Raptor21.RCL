@@ -1,3 +1,5 @@
+@use '../tap' as tap;
+
 .rg-form-body {
     display: flex;
     flex-direction: column;
@@ -45,6 +47,12 @@
 
     &:focus { outline: 2px solid var(--rg-accent); outline-offset: -1px; }
     &:disabled { opacity: .6; }
+}
+
+/* iOS Safari zooms the page on focus of any control whose font-size is under 16px. App breakpoints
+   aren't visible from here, so this keys off the device class instead. */
+@media (hover: none) and (pointer: coarse) {
+    .rg-input, .rg-textarea { font-size: 1rem; }
 }
 
 .rg-date { color-scheme: light; }
@@ -344,4 +352,37 @@ form.htmx-request button[type="submit"] .rg-btn-spin { display: inline-block; }
 
     &:focus-visible { outline: 2px solid var(--rg-accent); outline-offset: -1px; }
     &:disabled { opacity: .6; cursor: not-allowed; }
+}
+
+/* ================================================================================================
+   TOUCH TARGETS — see ../_tap.scss. Every rule raises a real layout box, never an out-of-flow
+   pseudo-element, so neighbouring controls keep exactly their container's gap between them.
+   ================================================================================================ */
+@include tap.media {
+    /* .rg-btn is the audit's worst offender by reach: it is the base of every RaptorButton, and
+       the host's `.page-header__action-btn` override (padding-block .25rem + font-size .75rem,
+       all !important) computes to a 24.4px-tall primary action on ~20 pages. min-height is a
+       different property from the padding those !important rules set, so the two compose: the
+       button keeps its compact padding and grows to 44px, with the label staying centred because
+       .rg-btn is already `inline-flex; align-items: center`.
+       Neighbour clearance: .rg-form-actions gap .5rem (8px); the host's action row separates
+       buttons with margin-inline-end .5rem (8px). Both stay untouched — no overlap. */
+    .rg-btn { @include tap.height; }
+    /* aspect-ratio: 1 turns the height floor into a width floor, so icon buttons become 44x44. */
+    .rg-btn-icon { min-width: var(--rg-tap-min); }
+
+    /* Checkbox/radio rows are <label> elements (RaptorCheckbox / RaptorControlTagHelpers), so the
+       whole row is the hit target and only its height was short (~24.9px). Stacked rows have no
+       gap: their boxes touch, which is contact, not overlap. Side by side (.rg-radio-inline,
+       .rg-permlist) the column gap is 1.25rem = 20px. */
+    .rg-check { @include tap.row; }
+    /* The switch label likewise toggles as a whole; the 2.2 x 1.25rem track stays decorative. */
+    .rg-switch { @include tap.height; }
+
+    /* Text entry. The iOS zoom guard above already lifts these to 1rem; this adds the height. */
+    .rg-input,
+    .rg-file { @include tap.height; }
+
+    /* A permission row carries controls on both ends of a space-between line with gap 1rem. */
+    .rg-permrow { @include tap.height; }
 }

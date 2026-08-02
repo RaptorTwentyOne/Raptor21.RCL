@@ -68,6 +68,9 @@ public sealed class GridViewModel
     /// <summary>Leading checkbox selection column enabled.</summary>
     public bool Selectable { get; init; }
 
+    /// <summary>Where the card-mode filter drawer is opened from. See <see cref="RaptorGridFilterEntry"/>.</summary>
+    public RaptorGridFilterEntry FilterEntry { get; init; } = RaptorGridFilterEntry.Fab;
+
     /// <summary>
     /// This render is the shell of a deferred grid: no rows yet, and the region posts to its own handler
     /// on <c>load</c> to fetch the first page. See <c>GridView&lt;T&gt;.DeferInitialLoad</c>.

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import {modalContainer} from '../modal/container'
+import {openModal} from '../modal/open'
 
 interface ConfirmProps {
     title: string;
@@ -38,7 +39,10 @@ function parseConfirm(raw: unknown): ConfirmProps {
 
 function showConfirm(props: ConfirmProps): Promise<boolean> {
     return new Promise(resolve => {
-        const wrap = document.createElement('div');
+        // The same element the server renders for `<RaptorModal>` — a native `<dialog>` — so this dialog
+        // reaches the top layer and sits above the sidebar rail like every other one. Built here rather
+        // than fetched because there is nothing to fetch: the message is already in `hx-confirm`.
+        const wrap = document.createElement('dialog');
         wrap.className = 'rg-modal';
         wrap.setAttribute('data-rg-component', 'modal');
         wrap.setAttribute('data-rg-modal-static', '');
@@ -73,6 +77,9 @@ function showConfirm(props: ConfirmProps): Promise<boolean> {
         cancelBtn.addEventListener('click', () => finish(false));
 
         modalContainer().appendChild(wrap);
+        // Opened here and not left to ModalComponent: that chunk is lazy, and a `<dialog>` that has not
+        // been shown is `display: none`. `mount()` calls `openModal` again and finds it already open.
+        openModal(wrap);
     });
 }
 
@@ -84,9 +91,9 @@ function showConfirm(props: ConfirmProps): Promise<boolean> {
  * `preventDefault()` to suppress the native dialog, shows the modal, and only issues the request once
  * the user confirms. Elements without `hx-confirm` are left untouched.
  *
- * The dialog is built as the same `rg-modal` DOM the server renders, so the modal component mounts it
- * with a focus trap, scroll lock and inert background. It is marked static, so only the explicit buttons
- * dismiss it.
+ * The dialog is built as the same `rg-modal` DOM the server renders — a native `<dialog>` — so the modal
+ * component mounts it with a focus trap and scroll lock, and the UA supplies the top layer and the inert
+ * background. It is marked static, so only the explicit buttons dismiss it.
  */
 export function installConfirm(): void {
     document.addEventListener('htmx:confirm', (event: Event) => {

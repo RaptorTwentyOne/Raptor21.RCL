@@ -1,5 +1,4 @@
-import {refreshGridsIn} from '../grid/api'
-import {dispatchPageLoad, isPageRegion} from './page-lifecycle'
+import {isPageRegion, PAGE_REGION_ID} from './page-lifecycle'
 import {load, render, type Blueprint} from '../skeleton/blueprint'
 
 interface HtmxRequestConfig {
@@ -8,15 +7,17 @@ interface HtmxRequestConfig {
     readonly boosted?: boolean
     readonly path?: string
     readonly target?: EventTarget | string | null
+    readonly headers?: Record<string, string>
 }
 
-/** The fields this module reads off htmx's beforeRequest/afterRequest CustomEvent detail (the
+/** The fields this module reads off htmx's beforeRequest/beforeSwap CustomEvent detail (the
  * `responseInfo` object htmx builds per-request). Kept partial: htmx's exact detail shape is not part of
  * its public contract. */
 interface HtmxResponseDetail {
     readonly target?: EventTarget | null
     readonly boosted?: boolean
     readonly requestConfig?: HtmxRequestConfig
+    shouldSwap?: boolean
 }
 
 function detailOf(event: Event): HtmxResponseDetail | undefined {
@@ -53,8 +54,14 @@ function htmxApi(): any {
 
 const MAIN_CONTENT_SELECTOR = '.main-content'
 
+/** Marks every skeleton this module paints — the generic markup below and blueprint-rendered ones alike
+ * — so the history handlers can recognise "this region currently shows a placeholder" with one query. */
+const SKELETON_MARK_ATTR = 'data-rg-skeleton'
+
+const SKELETON_SELECTOR = `[${SKELETON_MARK_ATTR}], .rg-nav-skeleton`
+
 const SKELETON_MARKUP = `
-<div class="rg-nav-skeleton" aria-hidden="true">
+<div class="rg-nav-skeleton" ${SKELETON_MARK_ATTR} aria-hidden="true">
     <div class="rg-nav-skeleton-titlebar">
         <span class="rg-skeleton rg-nav-skeleton-title"></span>
         <span class="rg-skeleton rg-nav-skeleton-action"></span>
@@ -102,6 +109,7 @@ function paintSkeleton(main: HTMLElement, path: string): void {
     if (blueprint) {
         const rendered = render(blueprint)
         if (rendered instanceof HTMLElement) {
+            rendered.setAttribute(SKELETON_MARK_ATTR, '')
             main.replaceChildren(rendered)
             return
         }
@@ -110,141 +118,88 @@ function paintSkeleton(main: HTMLElement, path: string): void {
     main.innerHTML = SKELETON_MARKUP
 }
 
-interface PageSnapshot {
-    readonly title: string
-    readonly html: string
-    readonly scrollY: number
-    readonly timestamp: number
-}
-
-const MAX_CACHE_ENTRIES = 10
-const CACHE_TTL_MS = 5 * 60 * 1000
-
-/** Insertion order == recency order: touched entries are deleted and re-set so they land at the end,
- * which is the ordering Map.keys() needs for "oldest first" eviction below. */
-const pageCache = new Map<string, PageSnapshot>()
-
-/** Cache key: pathname + search, dropping origin and hash — two boosted requests for the same page differ
- * only there, and a hash-only navigation shouldn't be treated as a different page. */
-function cacheKey(rawPath: string): string {
-    try {
-        const url = new URL(rawPath, window.location.origin)
-        return url.pathname + url.search
-    } catch {
-        return rawPath
-    }
-}
+/**
+ * The abandoned page's pre-skeleton reality, captured in `onBeforeRequest` just before the skeleton is
+ * painted.
+ *
+ * htmx snapshots the page it is leaving only once the response arrives (`htmx:beforeHistorySave`,
+ * immediately before `saveToHistoryCache`), by which time '.main-content' shows the skeleton — without
+ * this backup the history cache would hold placeholders, and every Back would restore a dead skeleton.
+ *
+ * `scrollY` must be captured BEFORE the skeleton is painted: shrinking '.main-content' makes the browser
+ * clamp `window.scrollY` instantly, htmx reads `window.scrollY` at snapshot time, and writing the
+ * pristine innerHTML back does not un-clamp it. Deliberately module-local rather than any keyed cache:
+ * a cache with TTL/LRU can evict or expire the entry and silently reintroduce the poisoning.
+ */
+let pendingPristine: { html: string; scrollY: number } | null = null
 
 /**
- * The URL a GET request will actually ask for.
+ * The element whose page-nav request is currently in flight, or null when none is.
  *
- * htmx keeps a GET's parameters out of `requestConfig.path` — it appends them when it issues the request.
- * Keying the cache on the bare path would therefore make every query-string variant of a page look like
- * the same page: the first one visited gets restored for all of them, and because a cache hit calls
- * `event.preventDefault()`, the real request is cancelled and the filter silently does nothing.
- *
- * Array values are expanded to repeated keys rather than joined, which is how htmx encodes them, so the
- * key matches the URL that would have been fetched.
+ * Kept so Back can cancel it: htmx's popstate handling restores the snapshot immediately, but the
+ * abandoned request stays on the wire, and its late response would swap `#app-root` forward again —
+ * visually undoing the user's Back. `htmx.trigger(elt, 'htmx:abort')` reaches htmx's body-level abort
+ * listener, which aborts the xhr recorded on that element (the same pattern modalSkeleton uses for a
+ * dismissed skeleton). The abort path fires `htmx:afterRequest` on the element, so the ordinary
+ * clear-on-completion below also covers aborts.
  */
-function requestedUrl(config: { path?: string; parameters?: Record<string, unknown> } | undefined): string {
-    const path = config?.path ?? window.location.href
-    const parameters = config?.parameters
-    if (!parameters) return path
+let inflightNavElt: Element | null = null
 
-    const query = new URLSearchParams()
-    for (const [name, value] of Object.entries(parameters)) {
-        if (value === null || value === undefined) continue
-        if (Array.isArray(value)) {
-            value.forEach(entry => query.append(name, String(entry)))
-        } else {
-            query.append(name, String(value))
+function abortInflightNav(): void {
+    if (!inflightNavElt) return
+    const elt = inflightNavElt
+    inflightNavElt = null
+    htmxApi()?.trigger(elt, 'htmx:abort')
+}
+
+/** Idempotency marks page modules historically stamped onto the DOM (`data-sales-dashboard-init`,
+ * `data-pg-swiper-ready`, ...). Serialised into a snapshot they suppress re-initialisation after a
+ * restore, so they are stripped from the live subtree right before htmx clones it. */
+const INIT_MARK_PATTERN = /^data-[a-z-]*init$/
+const SWIPER_READY_MARK = 'data-pg-swiper-ready'
+
+function stripInitMarks(root: Element): void {
+    const elements = [root, ...root.querySelectorAll('*')]
+    for (const el of elements) {
+        for (const name of el.getAttributeNames()) {
+            if (INIT_MARK_PATTERN.test(name) || name === SWIPER_READY_MARK) el.removeAttribute(name)
         }
     }
-
-    const encoded = query.toString()
-    if (!encoded) return path
-
-    return path + (path.includes('?') ? '&' : '?') + encoded
 }
 
-function pathnameOfKey(key: string): string {
-    const q = key.indexOf('?')
-    return q === -1 ? key : key.slice(0, q)
-}
-
-function touchCache(key: string, entry: PageSnapshot): void {
-    pageCache.delete(key)
-    pageCache.set(key, entry)
-    while (pageCache.size > MAX_CACHE_ENTRIES) {
-        const oldestKey = pageCache.keys().next().value
-        if (oldestKey === undefined) break
-        pageCache.delete(oldestKey)
-    }
-}
-
-/** Reading counts as use: a hit is moved to the most-recently-used end so a hot page is not evicted
- * merely because other pages were visited, but not revisited, more recently. */
-function getCached(key: string): PageSnapshot | null {
-    const entry = pageCache.get(key)
-    if (!entry) return null
-
-    if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
-        pageCache.delete(key)
-        return null
-    }
-
-    pageCache.delete(key)
-    pageCache.set(key, entry)
-    return entry
-}
-
-function invalidateByPathname(pathname: string): void {
-    for (const key of Array.from(pageCache.keys())) {
-        if (pathnameOfKey(key) === pathname) pageCache.delete(key)
-    }
-}
-
-/** Snapshots whatever '.main-content' currently holds under the current URL. Called both after every
- * settled boosted swap and once at install time — the latter covers the very first page of a session,
- * which never fires htmx:afterSettle because it wasn't htmx that put it there. */
-function snapshotCurrentPage(): void {
-    const main = mainContentEl()
-    if (!main) return
-
-    const key = cacheKey(window.location.pathname + window.location.search)
-    touchCache(key, {
-        title: document.title,
-        html: main.innerHTML,
-        scrollY: window.scrollY,
-        timestamp: Date.now(),
-    })
+/** Swiper's loop mode clones its edge slides (`.swiper-slide-duplicate`). Serialised into a snapshot,
+ * every restore-and-reinit would clone the clones and the slide count would grow on each Back. They are
+ * dropped right before htmx snapshots the subtree — the page is being swapped away, and the app's own
+ * swiper init recreates them after a restore (defence in depth: the app side also cleans up in its
+ * init). */
+function stripSwiperLoopClones(root: Element): void {
+    for (const clone of root.querySelectorAll('.swiper-slide-duplicate')) clone.remove()
 }
 
 /**
- * Paints a cached snapshot back without a network round trip.
+ * Runs synchronously right before htmx clones the history element into its sessionStorage cache.
  *
- * The history entry is pushed with the same `{htmx: true}` state shape htmx's own `pushUrlIntoHistory`
- * uses, so htmx's popstate handler still recognises the entry as one of its own. The restored subtree
- * arrives as plain innerHTML, so its `hx-*` attributes stay inert until htmx processes it; the page-load
- * signal then lets page glue reinitialise exactly as it would after a live navigation, and every
- * restored grid re-requests its current filter/sort/page state in the background.
+ * Two clean-ups so the snapshot is a faithful, re-enhanceable page: the skeleton painted by
+ * `onBeforeRequest` is swapped back for the real content it replaced (and the scroll position the
+ * skeleton clamped is restored — htmx reads `window.scrollY` right after this event), and every
+ * DOM-stamped init mark is stripped so restored pages re-initialise. The user never sees the
+ * intermediate state: htmx swaps the region immediately afterwards, and forward navigations then apply
+ * `show:window:top` anyway.
  */
-function restoreFromCache(main: HTMLElement, path: string, snapshot: PageSnapshot): void {
-    const url = new URL(path, window.location.origin)
+function onBeforeHistorySave(event: Event): void {
+    const main = mainContentEl()
+    if (main && main.querySelector(SKELETON_SELECTOR) && pendingPristine) {
+        main.innerHTML = pendingPristine.html
+        window.scrollTo(0, pendingPristine.scrollY)
+    }
+    pendingPristine = null
 
-    history.pushState({htmx: true}, '', url.pathname + url.search + url.hash)
-
-    document.title = snapshot.title
-    main.innerHTML = snapshot.html
-    window.scrollTo(0, snapshot.scrollY)
-
-    htmxApi()?.process(main)
-
-    dispatchPageLoad()
-
-    refreshGridsIn(main)
-
-    touchCache(cacheKey(path), snapshot)
+    const historyElt = (event as CustomEvent).detail?.historyElt
+    const root = historyElt instanceof Element ? historyElt : document.getElementById(PAGE_REGION_ID)
+    if (root) {
+        stripInitMarks(root)
+        stripSwiperLoopClones(root)
+    }
 }
 
 function onBeforeRequest(event: Event): void {
@@ -254,57 +209,129 @@ function onBeforeRequest(event: Event): void {
     const target = swapTargetOf(detail)
     if (!isPageNavRequest(detail, target)) return
 
+    inflightNavElt = detail.requestConfig?.elt instanceof Element ? detail.requestConfig.elt : null
+
     const main = mainContentEl()
     if (!main) return
 
-    const verb = (detail.requestConfig?.verb ?? 'get').toLowerCase()
-    const path = verb === 'get'
-        ? requestedUrl(detail.requestConfig)
-        : detail.requestConfig?.path ?? window.location.href
+    const path = detail.requestConfig?.path ?? window.location.href
 
-    if (verb === 'get') {
-        const cached = getCached(cacheKey(path))
-        if (cached) {
-            event.preventDefault()
-            restoreFromCache(main, path, cached)
-            return
-        }
+    // If the region already shows a skeleton (a previous request failed mid-flight), the pristine
+    // backup taken then still holds the real content — capturing again would back up the skeleton.
+    if (!main.querySelector(SKELETON_SELECTOR)) {
+        pendingPristine = {html: main.innerHTML, scrollY: window.scrollY}
     }
 
     paintSkeleton(main, path)
 }
 
+/** After a whole-page swap settles the backup refers to a page that no longer exists; normally
+ * `htmx:beforeHistorySave` consumed it already, this covers saves skipped by `hx-history="false"`. */
 function onAfterSettle(event: Event): void {
-    const target = (event as CustomEvent).target as EventTarget | null
-    if (!isPageRegion(target)) return
-    snapshotCurrentPage()
+    if (isPageRegion((event as CustomEvent).target as EventTarget | null)) pendingPristine = null
 }
 
-/** Invalidation is not scoped to "was this a save": any non-boosted POST (form save, delete action, grid
- * mutation, ...) marks that URL's cached snapshot stale. A grid's own paging/sort/filter POSTs trigger
- * this too, which costs those pages one extra cache-miss fetch the next time they are revisited. */
+/** The tracked page-nav request finished — success, error, timeout or abort all fire this on its
+ * element — so there is nothing left for Back to cancel. */
 function onAfterRequest(event: Event): void {
     const detail = detailOf(event)
-    const cfg = detail?.requestConfig
-    if (!cfg) return
-    if (detail?.boosted === true || cfg.boosted === true) return
-
-    const verb = (cfg.verb ?? '').toLowerCase()
-    if (verb !== 'post') return
-
-    try {
-        invalidateByPathname(new URL(cfg.path ?? window.location.href, window.location.origin).pathname)
-    } catch {
-        /* malformed path — nothing to key an invalidation on; a stale entry lingers until its TTL expires */
-    }
+    if (inflightNavElt && detail?.requestConfig?.elt === inflightNavElt) inflightNavElt = null
 }
 
+const SELF_HEAL_HEADER = 'RG-Self-Heal'
+
+/** Monotonic generation counter: every popstate restore invalidates whatever self-heal was in flight. */
+let healSeq = 0
+let healTarget: { seq: number; path: string } | null = null
+
+/**
+ * True when the DOM a history restore produced is not a usable page:
+ *
+ * - a skeleton inside '.main-content' — the snapshot was taken while the placeholder was showing
+ *   (an entry written before the pristine-backup fix, or a path the backup missed);
+ * - a full-document snapshot pasted INSIDE `#app-root` — a BODY-scoped snapshot taken before
+ *   `hx-history-elt` narrowed the history element, restored into the new, narrower region (double
+ *   chrome / nested roots; these entries carry no skeleton, so the first symptom alone would miss
+ *   them). Detected by library-owned signatures: a second `#app-root`, or a second `[hx-history-elt]`
+ *   (either attribute form) nested inside the real one — both can only come from a stale snapshot,
+ *   whatever chrome the host application renders. `#rg-top-glass` is the first host's fixed chrome,
+ *   kept as a back-compat symptom for entries written before the library-owned markers existed. The
+ *   versioned purge in page-lifecycle is the primary defence; this catches whatever it could not.
+ */
+function needsSelfHeal(): boolean {
+    if (document.querySelector(`${MAIN_CONTENT_SELECTOR} [${SKELETON_MARK_ATTR}], ${MAIN_CONTENT_SELECTOR} .rg-nav-skeleton`)) return true
+    if (document.querySelector(
+        `#${PAGE_REGION_ID} #${PAGE_REGION_ID}, ` +
+        `#${PAGE_REGION_ID} [hx-history-elt], ` +
+        `#${PAGE_REGION_ID} [data-hx-history-elt], ` +
+        `#${PAGE_REGION_ID} #rg-top-glass`,
+    )) return true
+    return false
+}
+
+/**
+ * Re-fetches the current path when a restore produced a broken DOM.
+ *
+ * The re-fetch is ASYNCHRONOUS: on a fast back/forward sequence a second popstate can land before the
+ * response does, and htmx's save-first behaviour on every restore would then write the late response's
+ * content into the cache under the WRONG url. The generation counter plus the `htmx:beforeSwap` guard
+ * below drop any response whose target restore is no longer the current one.
+ */
+function onHistoryRestore(): void {
+    // Belt to the popstate braces below: whichever fires first cancels the abandoned forward request.
+    abortInflightNav()
+
+    healSeq++
+    if (!needsSelfHeal()) {
+        healTarget = null
+        return
+    }
+
+    healTarget = {seq: healSeq, path: location.pathname + location.search}
+    void htmxApi()?.ajax('GET', healTarget.path, {
+        target: `#${PAGE_REGION_ID}`,
+        select: `#${PAGE_REGION_ID}`,
+        swap: 'outerHTML',
+        headers: {[SELF_HEAL_HEADER]: '1'},
+    })
+}
+
+/** Permanent guard: a self-heal response that is stale — a newer restore happened, or the URL moved on —
+ * is dropped instead of swapped, so it can never land under another entry's URL nor be re-snapshotted
+ * into the history cache with the wrong key. */
+function onBeforeSwapGuard(event: Event): void {
+    const detail = detailOf(event)
+    if (detail?.requestConfig?.headers?.[SELF_HEAL_HEADER] !== '1') return
+
+    const stale = !healTarget
+        || healTarget.seq !== healSeq
+        || location.pathname + location.search !== healTarget.path
+    if (stale) detail.shouldSwap = false
+}
+
+/**
+ * Perceived-speed and history hygiene for boosted navigations.
+ *
+ * Forward navigations paint a skeleton while the request is in flight. Back/forward is owned entirely
+ * by htmx's history mechanism (popstate + sessionStorage snapshots, scoped to `#app-root` via
+ * `hx-history-elt`); this module's job is to keep those snapshots clean — no skeletons, no stamped init
+ * marks — and to self-heal the rare restore that still surfaces a broken entry. There is deliberately
+ * no second, module-local page cache and no manual `history.pushState`: a single history ledger means
+ * htmx's `htmx-current-path-for-history` bookkeeping is never out of sync with the address bar.
+ */
 export function installNavigationUx(): void {
     document.addEventListener('htmx:beforeRequest', onBeforeRequest)
+    document.addEventListener('htmx:beforeHistorySave', onBeforeHistorySave)
     document.addEventListener('htmx:afterSettle', onAfterSettle)
     document.addEventListener('htmx:afterRequest', onAfterRequest)
+    document.addEventListener('htmx:historyRestore', onHistoryRestore)
+    document.addEventListener('htmx:beforeSwap', onBeforeSwapGuard)
 
-    snapshotCurrentPage()
+    // Back/forward while a page-nav request is on the wire: the request is cancelled at the earliest
+    // signal. `popstate` fires for both restore flavours (htmx installs `window.onpopstate` at init, so
+    // its restore runs before this listener); the historyRestore hook above covers any restore htmx
+    // performs without a matching popstate reaching us.
+    window.addEventListener('popstate', abortInflightNav)
 
     installViewportDebugBadge()
 }
@@ -323,7 +350,7 @@ function installViewportDebugBadge(): void {
     const badge = document.createElement('div')
     badge.id = 'rg-debug-badge'
     badge.style.cssText =
-        'position:fixed;left:4px;bottom:80px;z-index:99999;background:rgb(0 0 0 / .75);color:#0f0;' +
+        'position:fixed;left:4px;bottom:80px;z-index:var(--rg-z-debug, 900);background:rgb(0 0 0 / .75);color:#0f0;' +
         'font:10px/1.5 monospace;padding:6px 8px;border-radius:6px;pointer-events:none;white-space:pre;'
     document.body.appendChild(badge)
 

@@ -1,28 +1,81 @@
+@use '../tap' as tap;
+
 /* ---- Trigger + shell ------------------------------------------------------------------ */
 .rf-open-btn { display: inline-flex; align-items: center; gap: .45rem; padding: .42rem .8rem; border: 1px solid var(--rg-border); border-radius: .45rem; background: var(--rg-header-bg); color: var(--rg-fg); font-size: .82rem; font-weight: 500; cursor: pointer; }
 .rf-open-btn:hover { background: var(--rg-surface); }
 .rf-badge { min-width: 1.15rem; height: 1.15rem; padding: 0 .32rem; border-radius: 9999px; background: var(--rg-accent); color: #fff; font-size: .68rem; font-weight: 600; line-height: 1.15rem; text-align: center; }
 
-.rf-backdrop { display: none; position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.45); }
-.rf.rf-show .rf-backdrop { display: block; }
+/* ---- Overlay layers ------------------------------------------------------------------- *
 
-.rf-panel { display: flex; flex-direction: column; position: fixed; z-index: 61; background: var(--rg-bg); color: var(--rg-fg);
+   THREE ELEMENTS: `.rf-panel` is the top-layer shell, `.rf-backdrop` is the scrim and `.rf-sheet` is
+   the surface that slides. `popover="auto"` on the shell is what gives Escape, and — the reason the
+   shape changed — a containing block that is the VIEWPORT: this panel lives inside the consumer's
+   content column, and RaptorSidebar's Push mode puts a `translate` on that column, which re-resolves
+   every ordinary `position: fixed` descendant against it.
+
+   THE SLIDE IS ONE LEVEL IN, ON `.rf-sheet`. A transform on the shell would make the shell a
+   containing block for its own fixed scrim — the trap `_sidebar.scss` §3c measured on the rail, where
+   `inset: 0` on the scrim came out the RAIL's width and had to be rewritten with viewport units plus a
+   counter-translate. With the transform on the sheet, the scrim is a plain `position: fixed; inset: 0`
+   again, correct in every state.
+
+   Safari 26 (iOS 26) samples `position: fixed` elements that reach the viewport edges to tint its
+   own chrome — the status bar and the bottom toolbar — and it does so from the CSS alone, whether
+   or not the element is visible: an off-screen `transform`, `opacity: 0` or `pointer-events: none`
+   all still count. Two consequences run through everything below.
+
+   1. A closed overlay must be `display: none`. Pushing it off screen with a transform leaves a
+      full-width, opaque, viewport-edge-touching box in the render tree, and Safari paints the page
+      chrome with its background colour. That is now the user agent's own
+      `[popover]:not(:popover-open) { display: none }`, and the mount-then-slide it used to need two
+      classes for is `transition-behavior: allow-discrete` plus the popover's `@starting-style`.
+   2. The fixed element itself carries no `background` or `backdrop-filter`. Every painted surface
+      lives on an absolutely positioned `::before`, which Safari ignores. */
+
+.rf-panel {
+    /* Chrome's `[popover]` UA rule, corrected: `inset: 0` is wanted, `width/height: fit-content`,
+       `margin: auto`, `padding: .25em`, `border: solid`, `overflow: auto`, `color: CanvasText` and
+       `background: Canvas` are not. */
+    position: fixed; inset: 0; inline-size: auto; block-size: auto;
+    margin: 0; padding: 0; border-width: 0; overflow: visible;
+    color: var(--rg-fg); background: none;
+    z-index: var(--rg-z-drawer);   /* only reachable in the Safari-26 exit window — see below */
+
+    /* `overlay` is unsupported on Safari 26 (measured, `_sidebar.scss` §3b): dropped as an unknown
+       property there, the exit still animates and only the top-layer guarantee is lost for those
+       260ms, which is what the `z-index` above covers. */
+    transition: display .26s allow-discrete, overlay .26s allow-discrete;
+}
+.rf-panel:not(:popover-open) { display: none; }
+.rf-panel:popover-open { display: block; }
+
+.rf-backdrop { position: fixed; inset: 0; z-index: 0; background: rgba(0,0,0,.45); opacity: 0; transition: opacity .26s linear; }
+.rf-panel:popover-open > .rf-backdrop { opacity: 1; }
+@starting-style { .rf-panel:popover-open > .rf-backdrop { opacity: 0; } }
+
+.rf-sheet { display: flex; flex-direction: column; position: absolute; z-index: 1; color: var(--rg-fg);
             inset: 0;                                   /* phones: full screen */
-            transform: translateY(100%); transition: transform .26s ease; }
-.rf.rf-show .rf-panel { transform: none; }
+            translate: 0 100%; transition: translate .26s ease; }
+.rf-sheet::before { content: ''; position: absolute; inset: 0; z-index: -1; background: var(--rg-bg); }
+.rf-panel:popover-open > .rf-sheet { translate: none; }
+@starting-style { .rf-panel:popover-open > .rf-sheet { translate: 0 100%; } }
 
 @media (min-width: 768px) {
-    .rf-panel { inset: 0 0 0 auto; width: min(92vw, 400px); box-shadow: -10px 0 30px rgba(0,0,0,.28); transform: translateX(100%); }
+    .rf-sheet { inset: 0 0 0 auto; inline-size: min(92vw, 400px); translate: 100% 0; }
+    .rf-sheet::before { box-shadow: -10px 0 30px rgba(0,0,0,.28); }
+    @starting-style { .rf-panel:popover-open > .rf-sheet { translate: 100% 0; } }
 }
-@media (prefers-reduced-motion: reduce) { .rf-panel { transition: none; } }
+/* All three: `transition: none` also disables the discrete `display`/`overlay` transitions, so the
+   panel appears and disappears instantly, which is the correct reduced-motion answer. */
+@media (prefers-reduced-motion: reduce) { .rf-panel, .rf-sheet, .rf-backdrop { transition: none; } }
 
 /* ---- Head / foot ---------------------------------------------------------------------- */
-.rf-head { display: flex; align-items: center; gap: .6rem; padding: .9rem 1rem; border-bottom: 1px solid var(--rg-border); }
+.rf-head { display: flex; align-items: center; gap: .6rem; padding: .9rem 1rem; padding-top: calc(.9rem + env(safe-area-inset-top)); border-bottom: 1px solid var(--rg-border); }
 .rf-title { font-size: 1rem; font-weight: 650; margin: 0; flex: 1; }
 .rf-x { border: 0; background: none; color: inherit; opacity: .6; cursor: pointer; font-size: 1.35rem; line-height: 1; padding: .1rem .35rem; }
 .rf-x:hover { opacity: 1; }
 
-.rf-foot { display: flex; align-items: center; gap: .6rem; padding: .8rem 1rem; border-top: 1px solid var(--rg-border); }
+.rf-foot { display: flex; align-items: center; gap: .6rem; padding: .8rem 1rem; padding-bottom: calc(.8rem + env(safe-area-inset-bottom)); border-top: 1px solid var(--rg-border); }
 .rf-clear { flex: 0 0 auto; border: 0; background: none; color: inherit; opacity: .75; font-size: .82rem; cursor: pointer; padding: .45rem .2rem; }
 .rf-clear:hover { opacity: 1; text-decoration: underline; }
 .rf-done { flex: 1; padding: .6rem 1rem; border: 0; border-radius: .5rem; background: var(--rg-accent); color: #fff; font-size: .87rem; font-weight: 600; cursor: pointer; }
@@ -82,3 +135,43 @@
 .rf-busy { display: none; }
 .rf-form.htmx-request .rf-busy { display: inline-block; width: .8rem; height: .8rem; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; opacity: .6; animation: rf-spin .6s linear infinite; }
 @keyframes rf-spin { to { transform: rotate(360deg); } }
+
+/* ================================================================================================
+   TOUCH TARGETS — see ../_tap.scss. Real boxes only; no pseudo-element hit areas.
+
+   This panel is phone-first (full-screen below 768px), so almost every control here is one a
+   finger drives. The X button repeats the same ~25px close-button mistake as .rg-filter-x and
+   .rg-modal-x; all three now read the same token.
+   ================================================================================================ */
+@include tap.media {
+    /* Close: ~25x25 -> 44x44. Its only neighbour in .rf-head is .rf-title (flex: 1, non
+       interactive text) across a .6rem gap, so widening it cannot reach another control. */
+    .rf-x { min-width: var(--rg-tap-min); min-height: var(--rg-tap-min); display: inline-flex; align-items: center; justify-content: center; }
+
+    /* Footer + trigger. .rf-foot is `display: flex; gap: .6rem` (9.6px) between .rf-clear and
+       .rf-done; both grow in flow, so that 9.6px is preserved exactly. */
+    .rf-open-btn,
+    .rf-clear,
+    .rf-done { @include tap.height; }
+
+    /* Section headers are <summary> rows (~41.5px) — full width, no horizontal neighbour. */
+    .rf-sec > summary { @include tap.height; }
+
+    /* Option rows are <label> elements, so the whole row is the target: ~28.7px -> 44px.
+       Stacked in .rf-opts with gap .1rem (1.6px) — real separation, no overlap. */
+    .rf-opt { @include tap.row; }
+    .rf-exclude { @include tap.height; }
+
+    /* Segmented controls: .rf-tabs and .rf-seg are flex rows with gap .3rem (4.8px). Growing the
+       segments to 44px tall keeps that 4.8px edge-to-edge clearance — this is exactly the case
+       where an invisible ::after hit box would have overlapped its neighbour by ~19px. */
+    .rf-tab,
+    .rf-seg label { @include tap.row; justify-content: center; }
+
+    /* Inputs and selects inside the panel. */
+    .rf-in,
+    .rf-sel { @include tap.height; }
+
+    /* Per-field "clear" link — align-self: flex-start in a column, so it has no side neighbour. */
+    .rf-fieldclear { @include tap.height; }
+}

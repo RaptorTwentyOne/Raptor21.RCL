@@ -1,0 +1,620 @@
+/* ============================================================================================
+   RaptorSidebar — geometry tokens, mode contract, and the user-agent popover neutralisation.
+
+   THE MODE ATTRIBUTES LIVE ON THE RAIL, NOT ON <html>.
+   `RaptorSidebar` writes `data-rg-sidebar-mode` (below 992px) and `data-rg-sidebar-desktop` (992px
+   and up) onto its own <aside>. Rules that need the mode from outside the rail read it back with
+   `html:has(.rg-sidebar[…])`. Nothing in this library writes to the consumer's <html> element.
+
+   OPEN/CLOSED IS THE NATIVE POPOVER STATE.
+   The rail carries `popover` unconditionally — the server has no viewport to branch on, and a
+   `popovertarget` invoker that resolves to an element without the attribute is a silent no-op. The
+   band split is made here, in CSS. What that costs, and what it takes back, is spelled out below.
+   ============================================================================================ */
+
+/* --- Shared geometry ------------------------------------------------------------------------
+   One rail width, resolved once. Consumers size the rail, its fixed brand header and their own
+   content offset off `--rg-sidebar-w`, so a mode that changes the width changes all three.
+
+   This replaced three separately hard-coded `15rem`s and a 5rem/6rem mismatch in the BackOffice
+   theme (rail collapsed to 5rem while `.content`'s offset said 6rem — the 5rem `!important` in the
+   icon-overlay sheet was the only thing hiding the 1rem gutter). */
+:root {
+    --rg-sidebar-w-full: 15rem;
+    --rg-sidebar-w-rail: 5rem;
+
+    /* The rail's CURRENT rendered width. The rail and anything sized to match it (a fixed brand header
+       pinned across its top) read this. */
+    --rg-sidebar-w: var(--rg-sidebar-w-full);
+
+    /* The width the LAYOUT reserves beside the rail — what a content column offsets by.
+       Equal to --rg-sidebar-w in every mode except Rail, where the two deliberately diverge: a hovered
+       rail expands back to full width OVER the content instead of pushing it, so the rail grows while
+       the gutter does not. Offsetting the content on hover would reflow the whole page — and re-run
+       every grid's ResizeObserver — on a pointer entering the nav. */
+    --rg-sidebar-gutter: var(--rg-sidebar-w-full);
+
+    /* `--rg-sidebar-push` WAS HERE, and it is deleted rather than renamed. It held the mobile push
+       offset as a length that was `0px` while closed, which is exactly the shape §4's offset can no
+       longer have: the offset is a `translate` now, and `translate: 0px` is not `translate: none` —
+       it makes the pushed element a containing block for its fixed descendants PERMANENTLY. A token
+       whose resting value is a length cannot express "no transform at all", so the state lives in the
+       selector instead of in the value. Nothing outside this file ever read it.
+
+       `--rg-sidebar-inset-top` WAS ALSO HERE (as a note; it was never declared). It is gone with the
+       design it served — see §3b. The open rail is full-height now and the whole shell moves.
+
+       `--rg-sidebar-move-dur` / `--rg-sidebar-move-ease` — DELIBERATELY NOT DECLARED HERE, and for the
+       reason the deleted inset-top note gave: a declaration in this block sits at the same specificity
+       as the consumer's own `:root` while THIS stylesheet loads last, so the library would win the
+       cascade and silently overwrite the consumer's value. They are read as
+       `var(--rg-sidebar-move-dur, .22s)` / `var(--rg-sidebar-move-ease, cubic-bezier(.32,.72,0,1))`,
+       which gives the same defaults and leaves the override working.
+
+       ONE DURATION AND ONE EASING FOR ALL FOUR MOVING THINGS — the rail, its scrim, the consumer's
+       pushed content column and the consumer's pushed chrome. They are four separate elements in three
+       different subtrees (two of them outside the boosted-swap root), and the only thing that makes
+       them read as ONE frame sliding is that every one of them interpolates on the same clock. Any
+       rule below that omits the token and hard-codes a number has broken that, silently. */
+}
+
+/* --- 1) UA popover neutralisation, at EVERY width -------------------------------------------
+   Specificity is deliberately zeroed with `:where()`. The declarations that have to lose are in the
+   USER-AGENT origin, and author-origin beats user-agent origin regardless of specificity — so 0,0,0
+   is enough to win there, while still losing to every consumer rule (`.app-sidebar` is 0,1,0). The
+   alternative, `#sidebar[popover]` at 1,1,0, would have this library overriding the consumer's own
+   width, colour and border and dictating the theme.
+
+   Measured against Chrome's popover UA sheet on the BackOffice shell at 375x812, with the attribute
+   applied and this block absent: margin `0px 67.5px` (UA `margin: auto`), padding `3.252px` (UA
+   `.25em`), overflow `auto`, rail x = 67.5 instead of 0. Every one of those is corrected here. */
+:where(.rg-sidebar[popover]) {
+    /* UA: `inset: 0`. Only the two start edges are wanted; `inset: 0` plus a fixed width and
+       `margin: auto` centres the rail in the viewport. */
+    inset: auto;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+
+    margin: 0;                      /* UA: margin: auto */
+    padding: 0;                     /* UA: padding: .25em */
+    overflow: visible;              /* UA: overflow: auto — the scroll region is a child, not this */
+    color: inherit;                 /* UA: color: CanvasText */
+
+    /* UA: `border: solid`, i.e. all four edges at `medium`.
+       `border-width: 0`, NOT `border-style: none`: a consumer that draws a single edge does it by
+       setting a WIDTH on that edge (this theme sets `border-inline-end-width: 1px`, 0,1,0, which
+       outranks this rule and survives), while its STYLE usually comes from a 0,0,0 reset such as
+       Tailwind's preflight `* { border-style: solid }`. Writing `border-style: none` here would tie
+       with that reset, win on order — this stylesheet loads last — and erase the consumer's edge.
+       Measured: the BackOffice rail's right border is `1px solid rgba(255,255,255,.1)`, and it is
+       still exactly that with this rule applied. */
+    border-width: 0;
+
+    inline-size: var(--rg-sidebar-w);
+
+    /* NOT neutralised, on purpose: `position: fixed` (what a rail wants anyway, and what this theme
+       already sets) and `background-color: Canvas` (a drawer with no background is worse than an
+       opaque one; every consumer that themes the rail overrides it at 0,1,0). */
+}
+
+/* --- 1b) THE RAIL IS A CONTAINING BLOCK ONLY WHILE IT IS MOVING ------------------------------
+   The old rule here was absolute: NO `transform`/`translate`/`filter`/`perspective`/`will-change`/
+   `contain: paint` on `.rg-sidebar`, ever. The REASON is unchanged and still measured; what changed is
+   that the reason is a statement about the RESTING state and was being enforced against all states.
+
+   THE REASON. The dropdown/select panels re-home INTO the open rail (Client/src/core/dom.ts,
+   `portalTarget`) so they can paint above its top-layer scrim instead of light-dismissing it. They
+   position themselves `position: fixed` in VIEWPORT coordinates (core/anchor.ts), and below 992px the
+   dropdown becomes a full-width bottom sheet pinned with `inset: auto 0 0 0`. Any of those properties
+   makes the rail their containing block and the viewport stops being the reference. Re-measured today,
+   Chrome 390x844, a `position: fixed; inset: auto 0 0 0` probe parented into the rail:
+       rail `translate: none`      → probe [0, 784, 390, 60]   — viewport width, correct
+       rail `translate: -96.9%`    → probe [-232.5, 784, 240, 60] — the RAIL's width, and it moved with it
+   So the prohibition is real. It is also, exactly, a prohibition on a NON-`none` COMPUTED VALUE.
+
+   WHAT THE RULE IS NOW: `translate: none` AT REST; a value only while `:popover-open` is animating in
+   or out (§3b). `none` and `0` are not the same declaration — `translate: 0` computes to a value and
+   creates the containing block permanently, which is why the resting state is spelled `none` in every
+   rule below and why the `--rg-sidebar-push` token had to go (see the `:root` block).
+
+   WHY THAT IS SAFE RATHER THAN MERELY SMALLER. A portalled panel is opened by a user pointing at a
+   control INSIDE the rail, which can only happen once the rail is at rest — and at rest the rail's
+   computed `translate` is `none`, so the panel measures against the viewport. Measured at rest with
+   the entry transition live: the same probe is [0, 784, 390, 60], i.e. full viewport width.
+
+   THE RESIDUAL, NAMED RATHER THAN HIDDEN: a panel that is STILL OPEN when the rail starts closing is
+   re-confined for the length of the exit (~220ms) and squeezes to the rail's width. That is cosmetic,
+   it is bounded by the transition, and it needs the panel to survive the rail's close — which the
+   nested-popover light-dismiss chain normally prevents. It is NOT a reason to go back to a `display`
+   pop: a pop is 100% of the frames, this is a corner of one transition.
+
+   `filter` / `backdrop-filter` / `perspective` / `contain: paint` REMAIN BANNED OUTRIGHT. They are not
+   animated by anything here, they buy this design nothing, and unlike `translate` they would be on the
+   element permanently. Measured clean today on the BackOffice shell: every one computes `none`/`auto`
+   on the rail, on `.page.rg-sidebar-pushclip` and on `<body>`. */
+
+/* --- 1c) The scrim is OFF by default, at every width -----------------------------------------
+   `RaptorSidebar` renders the scrim element unconditionally — the server has no viewport to branch on,
+   the same reason the `popover` attribute is unconditional — so the only rule that may turn it on is
+   the `:popover-open` one in §3c. Declared HERE and not inside that media query, after the first
+   version was measured leaving it a live, zero-height flex child of the docked desktop rail
+   (1280x800: `display: block`, rect 239x0). Harmless on this theme, because `.app-sidebar` sets no
+   `row-gap` — and exactly the kind of harmless that stops being harmless on a consumer that does. */
+.rg-sidebar-scrim { display: none; }
+
+/* --- 2) 992px and up: popover semantics off; the rail is visible and in the normal paint order ---
+
+   WHAT ACTUALLY KEEPS THE RAIL VISIBLE HERE — MEASURED, and not what the design first claimed.
+   In a consumer that sets `display` on the rail (this theme: `.app-sidebar { display: flex }`,
+   0,1,0, no media query — verified in compiled `style.css` via the CSSOM, and it is one of exactly
+   two rules that write `display` and match `#sidebar`), the CONSUMER's declaration beats the UA's
+   `[popover]:not(:popover-open) { display: none }` on origin, and this `:where()` rule never applies
+   at all. It is still required for a consumer that sets no `display`: there it is the only thing
+   standing between the rail and the UA's `display: none`.
+
+   The value is `flex`, not `block`. If it ever does apply — or is ever raised to real specificity —
+   `block` would collapse a column rail: measured on this theme, `#sidebar-scroll` computes
+   `flex: 1 1 0%` and depends on the rail being a flex column for the pinned foot to stay pinned. */
+@media (min-width: 992px) {
+    :where(.rg-sidebar[popover]) {
+        display: flex;
+    }
+
+    /* Resized up from mobile with the drawer still open: geometry is already correct via block 1,
+       so only the scrim has to go. */
+    .rg-sidebar[popover]::backdrop { background: none; }
+
+    /* Rail. Two token flips, and they are NOT the same condition — measured, after the single-token
+       version shipped a visible defect: on hover the labels came back (the theme's own rules drop the
+       icon-only treatment on `:not(:hover)`) while the rail stayed 80px wide, so every label rendered
+       into a box too narrow to hold it.
+
+       The gutter is flipped unconditionally: the layout reserves rail width for as long as the mode is
+       Rail. The rail's own width is flipped only while it is neither hovered nor focused, so pointing
+       at it — or tabbing into it — expands it back to full width OVER the reserved gutter. That is what
+       "icon-overlay" always meant, and `:focus-within` is new: the script this replaces expanded on
+       hover only, so a keyboard user tabbed through labels that were `display: none`. */
+    html:has(.rg-sidebar[data-rg-sidebar-desktop='rail']) {
+        --rg-sidebar-gutter: var(--rg-sidebar-w-rail);
+    }
+
+    html:has(.rg-sidebar[data-rg-sidebar-desktop='rail']:not(:hover):not(:focus-within)) {
+        --rg-sidebar-w: var(--rg-sidebar-w-rail);
+    }
+
+    /* Not presented in this band. 0,2,0 — it has to outrank a consumer's own `display`. */
+    .rg-sidebar[data-rg-sidebar-desktop='off'] { display: none; }
+}
+
+/* --- 3) Below 992px: the CLOSED state, and where the OPEN rail STARTS -------------------------
+
+   TWO RULES HERE ARE DELIBERATELY OUTSIDE `:where()`, AND THEY ARE THE ONLY TWO IN THIS FILE.
+   Both have to outrank the consumer's own `.app-sidebar` (0,1,0), so both are written at 0,2,0.
+
+   (a) `:not(:popover-open) { display: none }`.
+   Hiding a closed drawer cannot be left to the user agent. Measured on this shell at 375x812, with
+   `popover` applied and the theme's own mobile hide rule removed: the closed rail computed
+   `display: flex` and occupied 240x812 at x=67.5 — 64% of the viewport, permanently, with no way to
+   dismiss it (it is not in the top layer, so Esc, light-dismiss and `hidePopover()` do nothing).
+   Adding the same rule wrapped in `:where()` changed nothing — still `flex`. At real specificity
+   (0,2,0) it computed `none`. The consumer's unconditional `.app-sidebar { display: flex }` is the
+   reason: author origin beats the UA at every width, so this library has to own the closed state.
+
+   (b) `:popover-open { block-size }` — THE OPEN RAIL IS FULL-HEIGHT, AND THE SHELL MOVES WITH IT.
+
+   THIS REVERSES THE PREVIOUS DESIGN, WHICH THE USER REJECTED IN SO MANY WORDS ("topbar ile birlikte
+   pushlamaliydi sidebar"). What used to be here: the rail started at `--rg-sidebar-inset-top` so it
+   cleared a consumer's fixed top bar, because Push moved only the content column and the bar stayed
+   put. That kept the bar interactive under an open drawer — and it also meant the app frame visibly
+   TORE: the content slid out from under a bar that did not move.
+
+   WHY THE OLD OBJECTION NO LONGER BINDS. It rested on "the bar cannot be pushed", and the two ways of
+   pushing it that had been tried were re-run this round and both do fail:
+     · `margin-inline-start` on the bar (it is `width: 100%`) → bar [240,0,390,56], `.rg-topbar-actions`
+       to x=578. Re-measured, and the NEW measurement is the one that kills it: the hamburger is a
+       `position: fixed` CHILD of the bar, so with no transform on the bar its containing block is the
+       viewport and it stayed at [12,12,44,44] — the bar moved and its own button did not.
+     · shrinking the bar to `calc(100% - rail)` → 150px wide, title column 286px → 46px, the title
+       clipped for the first time, and `resize` fired ZERO times, so RaptorPageChrome's truncation
+       measurement (its only signal) goes stale in silence.
+   The third way was never tried: move the bar RIGIDLY. Its layout box does not change at all — same
+   width, same title column, nothing to re-measure, no `resize` owed — it is simply translated, and its
+   fixed children translate WITH it because a transformed ancestor is their containing block. That is
+   the native push-drawer contract, and it is what §4 does now.
+
+   SO THE RAIL RUNS FULL HEIGHT, and the hole §3d used to describe closes STRUCTURALLY instead of by a
+   contract the consumer had to opt into: the scrim is the whole viewport (§3c), so there is no strip
+   above it to leak through. The bar's own controls go under the scrim while the drawer is open and a
+   tap there closes it — that is the native contract, and the close paths are scrim tap, Esc,
+   light-dismiss and the focus trap keeping Tab inside the rail.
+
+   `padding-block-start: env(safe-area-inset-top)`: with `inset-block-start` back at 0 the rail starts
+   at the top of the LAYOUT viewport. In a Safari tab that is already below the status bar (measured on
+   iPhone 17 Pro Max / iOS 26: `env(safe-area-inset-top)` is 0 and the layout viewport is 440x796), so
+   this is a no-op there. In standalone (Add to Home Screen) the inset is real and without this the
+   rail's first menu item would sit under the Dynamic Island. */
+@media (max-width: 991.98px) {
+    /* THE ENTRY AND EXIT TRANSITION. `display` is a discrete property, so a popover pops unless the
+       transition explicitly opts into `allow-discrete` — which is precisely what the user reported
+       ("sidebar bi anda pop oluyor").
+
+       SAFARI 26.5 / iOS 26 SUPPORT, MEASURED on iPhone 17 Pro Max rather than assumed:
+           `transition-behavior: allow-discrete`  OK
+           `@starting-style`                      OK (CSSStartingStyleRule present)
+           `overlay`                              **NOT SUPPORTED**
+       `overlay` is declared anyway. In Chrome it keeps the rail in the top layer for the length of the
+       exit; in Safari it is dropped as an unknown property and the exit still animates, measured —
+       `display` stays `flex` for the whole 220ms while `translate` interpolates. What Safari loses is
+       only the top-layer guarantee DURING the exit: the rail falls back to its own z-index (210), which
+       on this shell still sits above the chrome band (glass 100 / header 110 / FAB 120). A modal (400)
+       or toast (600) opened inside that 220ms window would paint over the closing rail.
+
+       0,2,0 like its neighbours: the consumer's `.app-sidebar` (0,1,0) commonly sets `transition` as
+       part of a theme, and a theme's `transition: all .1s` would otherwise capture these properties at
+       the wrong duration. */
+    .rg-sidebar[popover] {
+        translate: none;
+        transition:
+            translate var(--rg-sidebar-move-dur, .22s) var(--rg-sidebar-move-ease, cubic-bezier(.32,.72,0,1)),
+            display var(--rg-sidebar-move-dur, .22s) allow-discrete,
+            overlay var(--rg-sidebar-move-dur, .22s) allow-discrete;
+    }
+
+    /* ONE CLOSE, NOT ANIMATED — the boosted-navigation case. `runtime/sidebar.ts` item 1 puts this
+       attribute on the rail for the two frames around an `htmx:beforeSwap` close. The reason is in that
+       handler's comment and it is measured: the rail and the consumer's chrome survive the swap and
+       animate out, but `.content` is REPLACED and renders at `translate: none` immediately, so the
+       content snapped 240px in one frame while the bar was still 240px out.
+       0,3,0 — it has to outrank the 0,2,0 rule directly above; the pushed pair below is 0,4,1 against
+       that group's 0,3,1, the same one-attribute margin. */
+    .rg-sidebar[popover][data-rg-sidebar-anim='off'],
+    .rg-sidebar[popover][data-rg-sidebar-anim='off'] > .rg-sidebar-scrim { transition: none; }
+
+    html:has(.rg-sidebar[data-rg-sidebar-mode='push'][data-rg-sidebar-anim='off']) {
+        .rg-sidebar-pushed,
+        .rg-sidebar-pushed-chrome { transition: none; }
+    }
+
+    /* `-100%`, i.e. the rail's OWN width, so it does not need to read `--rg-sidebar-w` and cannot drift
+       from it. Off-screen rather than `display: none` alone is what gives the exit somewhere to go. */
+    .rg-sidebar[popover]:not(:popover-open) { display: none; translate: -100% 0; }
+
+    .rg-sidebar[popover]:popover-open {
+        /* `height: 100%` on a fixed element resolves against the initial containing block, so a
+           consumer's own `height: 100%` is already viewport height — which is why this has to be
+           written here rather than left to block 1's `:where()`: at 0,0,0 it loses to that. */
+        block-size: 100dvh;
+        padding-block-start: env(safe-area-inset-top);
+
+        /* `none`, NOT `0`. §1b: `0` computes to a value and would make the rail a permanent containing
+           block for the panels portalled into it. Measured at rest with this spelling: a
+           `position: fixed; inset: auto 0 0 0` probe inside the rail is [0,784,390,60] — viewport
+           width, not the rail's 240. */
+        translate: none;
+    }
+
+    /* Without this the rail is already at its open position on the first frame and there is nothing to
+       interpolate from — `display: none` → `flex` gives the engine no start value of its own. */
+    @starting-style {
+        .rg-sidebar[popover]:popover-open { translate: -100% 0; }
+    }
+
+    :where(.rg-sidebar[popover]:popover-open) {
+        display: flex;
+    }
+
+    /* ---- (c) THE SCRIM IS A REAL ELEMENT, NOT `::backdrop` ------------------------------------
+
+       MEASURED IMPOSSIBILITY, not a preference. `pointer-events: auto !important` written into
+       `.rg-sidebar[popover]:popover-open::backdrop` (0,3,1) still computed `none`; the `background`
+       declared in the SAME rule applied (it went green), so the rule matched and Chrome simply does
+       not hand that property to the author on a popover backdrop. A `<dialog>`'s backdrop is the
+       counter-example — `pointer-events` there computes `auto` — which is why the modal can rely on
+       its own and this cannot.
+
+       WHAT THAT COST, MEASURED WITH REAL (isTrusted) TAPS at 390x844. With the drawer open, one tap
+       on the visible strip of pushed content produced: `beforetoggle open→closed`, then
+       `click target=BUTTON#danger-delete`, then `htmx:confirm` — the dismissal gesture ALSO fired the
+       `hx-confirm` Delete it landed on and left a confirmation dialog open. The app-level
+       `#responsive-overlay` this architecture deleted used to swallow that tap. Live victims of the
+       same gesture today: UsersGrid/RolesGrid/RelatedPersonsGrid/IpRestrictionsGrid Delete, and Send /
+       Reset Password in AddOrEditRelatedPersonModal.
+
+       THE SAME TAP AFTER THIS RULE, same page, same button: `beforetoggle open→closed`, `SCRIM-CLICK`,
+       and NOTHING else — no click on the button, no `htmx:confirm`, `#modal-container` still empty,
+       `document.activeElement` back on `<body>` (so the next Enter cannot fire the control either),
+       and the push unwound with the scroll lock released. (That last clause read
+       "`--rg-sidebar-push` back to 0px" when the offset was a token-driven margin; the token is gone
+       and the same state is now `translate: none` on the pushed elements — §4.)
+
+       RE-MEASURED after the push became a translate and the scrim grew to the full viewport, on the
+       real /roles page at 500x823 with REAL isTrusted taps: tap the hamburger →
+       `click target=ri-menu-line` then `RAIL closed->open`; tap at (340,340), directly over a probe
+       button whose own handler is known to fire (it fired on the identical tap with the rail shut) →
+       `click target=rg-sidebar-scrim` then `RAIL open->closed`, and NO `PROBE-HANDLER-FIRED`. The
+       positive control is the point: the test is not vacuous, the scrim really is what takes the tap.
+
+       `z-index: -1` is what keeps the scrim out of the rail's own way. A top-layer element is its own
+       stacking context, so a negative-index child paints BEHIND the rail's (opaque, 240px-wide)
+       background and IN FRONT of everything outside it. Measured: `elementsFromPoint(120, 300)` =
+       `[#sidebar-scroll, #scrim, #sidebar]` — the menu still takes its own taps — and
+       `elementsFromPoint(330, 158)` = `[#scrim, #danger-delete]` — the page no longer does.
+
+       IT COVERS THE WHOLE VIEWPORT NOW. It used to start at `--rg-sidebar-inset-top` so a consumer's
+       bar stayed undimmed and interactive; §3d then had to exist because that undimmed strip was a
+       HOLE — a real click at (314,29) fired a page control AND closed the rail. Both are gone: the bar
+       moves with the rail (§4), so it is inside the dimmed area by construction and there is no strip
+       left to leak. §3d is deleted, not relocated.
+
+       ---- IT MUST COUNTER-TRANSLATE, AND IT MUST NOT BE SIZED WITH `inset` ----------------------
+       The scrim is a DOM CHILD of the rail, so the rail's `translate` drags it along: without the
+       counter-translate below the dim slides in from the left with the panel instead of covering the
+       page. Measured before the counter: at the last exit frames a probe at (2,300) returned the page's
+       `.box-body`, i.e. the scrim had already left.
+
+       THE SIZE IS THE PART THE DESIGN GOT WRONG, AND IT WAS MEASURED WRONG-WAY-ROUND FIRST.
+       While the rail's `translate` is non-`none` the rail IS the containing block for this fixed child
+       (§1b), so `inset: 0` resolves against the RAIL, not the viewport. Measured, Chrome 390x844, scrim
+       written as `inset: 0` + counter-translate:
+           entry frames  scrim [0, 0, 240, 844]      ← 240px: the rail's width, page NOT dimmed
+           at rest       scrim [0, 0, 390, 844]      ← snaps to full width the instant translate → none
+       i.e. the dim layer popped exactly like the panel used to. The `x` looked right in every frame —
+       the two translates cancel — which is how it survives a coordinate-only check.
+
+       Written as `inline-size: 100vw; block-size: 100lvh` the containing block stops mattering:
+       viewport units resolve against the viewport in BOTH states. Re-measured, same page, same probe:
+           entry frames  scrim [0, 0, 390, 844]
+           at rest       scrim [0, 0, 390, 844]
+           exit frames   scrim [0, 0, 390, 844]      opacity 1 → .96 → .93 …
+       and `document.documentElement.scrollWidth == clientWidth == 390`, so a 100vw fixed box inside a
+       top-layer subtree adds no horizontal overflow.
+       `lvh` and not `dvh` for the height: `dvh` shrinks as Safari's chrome expands, and a scrim that is
+       a few px short at the bottom is a visible seam, while one that overruns is invisible.
+
+       The opacity fade is `linear` on purpose while everything else uses the shared easing: a dim layer
+       that eases has a perceptible "settling" that the sliding panel does not, and the two read as two
+       events. `display` takes `allow-discrete` for the same reason the rail does — without it §1c's
+       `display: none` applies on the first exit frame and the page snaps bright while the panel is
+       still sliding out (measured on iOS as an instant scrim disappearance).
+
+       The UA backdrop keeps its geometry but is emptied, so the two do not double up. The colour token
+       is unchanged — light and dark carry different alphas (styles/themes/_light.scss, _dark.scss) and
+       these are the two values the app-level #responsive-overlay already used. */
+    .rg-sidebar[popover]:popover-open::backdrop {
+        background: none;
+    }
+
+    .rg-sidebar[popover] > .rg-sidebar-scrim {
+        position: fixed;
+        inset-block-start: 0;
+        inset-inline-start: 0;
+        inline-size: 100vw;
+        block-size: 100lvh;
+        z-index: -1;
+        background: var(--rg-scrim, rgb(17 24 39 / .5));
+
+        translate: var(--rg-sidebar-w) 0;
+        opacity: 0;
+        transition:
+            translate var(--rg-sidebar-move-dur, .22s) var(--rg-sidebar-move-ease, cubic-bezier(.32,.72,0,1)),
+            opacity var(--rg-sidebar-move-dur, .22s) linear,
+            display var(--rg-sidebar-move-dur, .22s) allow-discrete;
+    }
+
+    .rg-sidebar[popover]:popover-open > .rg-sidebar-scrim {
+        display: block;
+        translate: none;
+        opacity: 1;
+    }
+
+    @starting-style {
+        .rg-sidebar[popover]:popover-open > .rg-sidebar-scrim {
+            translate: var(--rg-sidebar-w) 0;
+            opacity: 0;
+        }
+    }
+
+    /* ---- (d) WAS: "THE STRIP ABOVE THE SCRIM IS A HOLE, AND ONLY THE CONSUMER CAN PLUG IT" -----
+       DELETED WITH THE DESIGN THAT CREATED IT, along with the `.rg-sidebar-topshield` class contract.
+
+       What it documented was real: with the scrim starting at `--rg-sidebar-inset-top`, one real
+       (isTrusted) click at (314,29) — in the undimmed strip, on a page control the page had scrolled
+       under the consumer's bar — targeted the PAGE control, fired its handler (0 -> 1) AND closed the
+       rail. A consumer's bar is typically `pointer-events: none` so content stays visible scrolling
+       underneath, which made it a WINDOW onto live controls rather than a lid, and this library could
+       not plug it itself: any shield it rendered would be a descendant of the rail, i.e. in the top
+       layer, and would therefore also cover the consumer's hamburger. So the consumer named an element
+       and this rule flipped its `pointer-events` while a rail was open.
+
+       IT IS OBSOLETE, NOT MOVED. The strip does not exist any more: §3c's scrim is `100vw x 100lvh`
+       from (0,0), so the whole viewport is dimmed and hit-tested, and the consumer's bar has been
+       translated INTO the covered area by §4 rather than left behind above it. A class whose only job
+       was to plug a hole that no longer exists is worse than nothing — it reads as a live contract.
+       Consumers must drop the class from their markup; leaving it on costs nothing but means nothing. */
+
+    .rg-sidebar[data-rg-sidebar-mode='off'] { display: none; }
+}
+
+/* --- 4) PUSH (mobile band only; desktop is Docked or Rail) -----------------------------------
+
+   THE WHOLE APP FRAME MOVES AS ONE PIECE. Bar, glass and content leave together, arrive together and
+   travel the same distance. The previous design moved only the content column and left the consumer's
+   fixed bar behind; the user rejected it outright ("topbar ile birlikte pushlamaliydi sidebar"), and
+   what they were describing is a frame that TEARS at the bar's bottom edge.
+
+   The consumer opts THREE of its own elements in — this library does not know their class names:
+     `.rg-sidebar-pushed`         the content column
+     `.rg-sidebar-pushclip`       an ancestor of it that clips the overflow (the page frame)
+     `.rg-sidebar-pushed-chrome`  NEW. Fixed chrome that lives OUTSIDE the content column and must move
+                                  with it — a persistent top bar, a glass/backdrop layer. Opt-in, and a
+                                  consumer with no such chrome simply never uses it.
+   The third class is separate from `.rg-sidebar-pushed` on purpose rather than for tidiness: the
+   pushed column also gets `inline-size: 100%` and lives inside the clip, and neither is true of fixed
+   chrome — a fixed bar given `inline-size: 100%` would resolve it against its own containing block and
+   a fixed bar inside `overflow-x: clip` is not clipped by it at all.
+
+   ---- THE OFFSET IS `translate` NOW, AND THAT REVERSES THIS FILE'S OLDEST PROHIBITION -------------
+   What stood here: "NO transform AND NO translate. Not even `translate: 0`" — because a computed
+   transform makes the element a containing block for its `position: fixed` descendants, and the pushed
+   subtree is where the modals, bottom sheets, filter drawers and FABs live. The offset was
+   `margin-inline-start`, which creates neither.
+
+   THE PREMISE MOVED. Most of that subtree is in the TOP LAYER now (modal/confirm/progress are
+   `<dialog>.showModal()`, toasts are `popover="manual"`, dropdown and select panels are popovers), and
+   a top-layer element's containing block is the VIEWPORT regardless of any ancestor transform.
+   Measured, Chrome 390x844, `translate3d(240px,0,0)` applied to `.rg-sidebar-pushed` and every surface
+   opened inside it:
+       <dialog>.showModal()              [0,0,200,120]      -> [0,0,200,120]        UNCHANGED
+       popover="manual" (toast)          [192,764,7,80]     -> [192,764,7,80]       UNCHANGED
+       popover="auto"   (dropdown)       [192,764,7,80]     -> [192,764,7,80]       UNCHANGED
+       fixed, inset:0, NOT top layer     [0,0,390,844]      -> [240,56,390,28527]   BROKEN
+       fixed drawer,    NOT top layer    [55,0,335,844]     -> [295,56,335,28527]   BROKEN
+   So the prohibition is now exactly as strong as the set of NON-top-layer fixed surfaces in the pushed
+   subtree — AND THAT SET IS NOW EMPTY. It used to be enumerated here as two surfaces, the grid filter
+   drawer and RaptorFilterPanel, both of them guarded by the claim that they "cannot be reached while a
+   rail is open". Both halves of that were wrong:
+
+     · THE LIST WAS SHORT BY ONE. `.rg-filter-fab` is `position: fixed` too, it is in this subtree, and
+       unlike a drawer it is ON SCREEN AT REST — so "cannot be reached while a rail is open" never
+       applied to it, and it did not have to be REACHED to break. Measured on /roles at 500x823, pushed
+       box [0,56,495,723]: FAB at rest [395,663,84,44]; on the FIRST frame of the rail opening
+       [395.2,719], i.e. 56px — the pushed box's own top offset — DOWN in a single frame, before any
+       horizontal movement had begun. A visible jump on every rail open, with nothing opened at all.
+     · THE GUARD WAS NOT A GUARANTEE EITHER. It was an argument about user reachability, not an
+       invariant the engine enforces: anything that opened one of those surfaces from script (a restore
+       after a swap, a deep link, a consumer's own code) landed straight in the broken case.
+
+   ALL THREE ARE IN THE TOP LAYER NOW, which is the permanent fix this note used to describe as future
+   work. `.rg-filter-drawer` and `.rf-panel` are `popover="auto"` (Escape and light-dismiss come from
+   the UA with them), and `.rg-filter-fab` is a `popover="manual"` that `MobileFilterDrawer` shows at
+   mount and never hides — `manual` because an `auto` FAB would be light-dismissed by the first tap and
+   would close when the drawer, itself `auto`, opened. `.rg-pop` cannot be reached at all below 992px
+   (card mode renders no funnel buttons), so nothing is left.
+
+   THE VALUE IS STILL `none` AT REST, AND IT STAYS THAT WAY. `translate: 0` is NOT `none`: it computes
+   to a value and creates the containing block permanently. That no longer breaks anything this library
+   renders, but it would silently break the CONSUMER's own fixed descendants of the pushed column, and
+   this file has no way to enumerate those. `none` at rest costs nothing and keeps the guarantee whole,
+   which is also why `--rg-sidebar-push` (a token that had to hold `0px` while closed) stays deleted
+   rather than reused.
+
+   THE FAB IS THE ONE TOP-LAYER SURFACE THAT STILL HAS TO TRAVEL WITH THE FRAME — see §4b.
+
+   ---- WHY NOT KEEP THE MARGIN ---------------------------------------------------------------------
+   NOT for frame rate. Measured honestly, iOS 26, 4 open/close cycles, forced-layout cost per animation
+   frame: margin p50 0ms p90 1ms max 1ms (34ms total over 112 samples) vs translate p50 0 p90 1 max 2
+   (33ms). The "margin reflows every frame" hypothesis did NOT reproduce.
+
+   The reason is CORRECTNESS. A `margin-inline-start` on the consumer's bar moves the bar's LAYOUT BOX,
+   and the bar's own `position: fixed` children — the hamburger that opens this rail — are laid out
+   against the VIEWPORT, not against the bar, because the bar carries no transform. Measured at 390x844
+   with the bar at `margin-inline-start: 240px`: bar [240,0,390,56] and hamburger STILL [12,12,44,44].
+   The bar left and its button did not. Only a transform takes fixed descendants along; measured with
+   the rigid translate: bar [240,0,390,56], hamburger [252,12,44,44]. No `will-change` or `contain`
+   fixes the margin version, because the problem was never cost.
+
+   RIGID, NOT RESIZED. The bar keeps its width and every child keeps its position within it; the right
+   edge simply leaves the screen. `.rg-topbar-actions` lands at x=578 on a 390px viewport — the same
+   number the old note quoted as the reason to reject pushing the bar — but it is not a defect here: it
+   is 338+240, i.e. correct RELATIVE TO THE BAR, and while the rail is open the bar is under the scrim
+   anyway. The alternative, shrinking the bar to `calc(100% - rail)`, was re-measured and re-rejected:
+   150px wide, title column 286px -> 46px, the title clipped for the first time, and `resize` fired
+   ZERO times — RaptorPageChrome's truncation check listens to nothing else, so its "it fits" decision
+   goes stale in silence. A rigid slide changes no layout box, so there is nothing to re-measure.
+
+   THE PUSHED BOX STILL DOES NOT SHRINK. `inline-size: 100%` stays, and it is now the ONLY thing
+   keeping the measurement constant — `GridLayout` observes `contentRect.width` and relays out the
+   whole grid on any change. Measured with translate: the ResizeObserver on `.rg-sidebar-pushed` fires
+   0 times through a full open/close (it fired once, with a single distinct width, under margin).
+   `100%`, NOT `100dvw`: `dvw` counts the classic scrollbar gutter and the containing block does not,
+   which shipped a permanent 5px right-edge crop (390 in a 385 clip at 390x844; 900 in 895 at 900x800)
+   with the drawer SHUT, on every page. Gating it on `:not(:popover-open)` was also rejected — the box
+   then swings 385 <-> 390 per toggle, which is the exact ResizeObserver churn this prevents.
+
+   `overflow-x: clip` on `.rg-sidebar-pushclip` stays and now earns its keep twice: it absorbs the
+   translated column's overflow, and unlike `overflow: hidden` it establishes no scroll container. It
+   does not clip the FIXED descendants of the pushed column (their containing block is the viewport, an
+   ancestor of the clipper) — except while the rail is open, when the pushed column's own transform
+   makes it their containing block and they are clipped with it. Same invariant as above, same reason
+   it does not bite: nothing non-top-layer can be open then.
+
+   THE PERCENTAGE ASSUMES `.rg-sidebar-pushclip` HAS NO INLINE PADDING. It is the pushed element's
+   containing block; padding on it would narrow the pushed box by that much. Consumers put their
+   gutters on an inner element. */
+@media (max-width: 991.98px) {
+    html:has(.rg-sidebar[data-rg-sidebar-mode='push']) {
+        /* One declaration block for both opted-in groups so they can never be given different
+           durations or easings by a later edit — see the `:root` note. `translate: none` is the resting
+           value for BOTH, and it is what keeps §4's containing-block guarantee at rest. */
+        .rg-sidebar-pushed,
+        .rg-sidebar-pushed-chrome {
+            translate: none;
+            transition: translate var(--rg-sidebar-move-dur, .22s) var(--rg-sidebar-move-ease, cubic-bezier(.32,.72,0,1));
+        }
+
+        .rg-sidebar-pushed { inline-size: 100%; }
+
+        .rg-sidebar-pushclip { overflow-x: clip; }
+    }
+
+    html:has(.rg-sidebar[data-rg-sidebar-mode='push']:popover-open) {
+        .rg-sidebar-pushed,
+        .rg-sidebar-pushed-chrome {
+            translate: var(--rg-sidebar-w) 0;
+        }
+    }
+
+    /* --- 4b) THE FILTER FAB TRAVELS WITH THE FRAME, ON ITS OWN ---------------------------------
+       It is the one surface this library renders that is BOTH in the top layer and expected to move
+       with the push. Everything else that is top-layer is a thing the user OPENED (a modal, a sheet, a
+       toast) and belongs to the viewport; the FAB is at rest on the page and reads as part of the app
+       frame, so leaving it still while the bar, the glass, the content and the rail all slide is the
+       same tear this whole section exists to remove — just at a different seam.
+
+       And it has to be moved EXPLICITLY, because being in the top layer is exactly what stops the
+       ancestor's transform reaching it. That is the point of putting it there: the pushed column's
+       `translate` used to re-resolve the FAB's `position: fixed` against the column, which is what
+       produced the 56px single-frame drop measured in §4's note. So the ancestor transform is refused
+       and this one, on the same token, the same duration and the same easing, is applied instead —
+       the FAB interpolates on the same clock as the other four movers and the frame stays one piece.
+
+       `:popover-open` IS THE WHOLE GUARD, not tidying-up. The attribute is on the button from the
+       server but the top layer is entered by script, so between first paint and the grid chunk mounting
+       (and forever, on an engine without the popover API) the FAB is still an ORDINARY fixed descendant
+       — one the ancestor transform does move. Applying this rule to it then would translate it TWICE,
+       480px on a 240px rail. Gated on the state that actually decides which of the two is true, the
+       compensation exists exactly when it is needed and never otherwise. */
+    html:has(.rg-sidebar[data-rg-sidebar-mode='push']) {
+        .rg-filter-fab:popover-open {
+            translate: none;
+            transition: translate var(--rg-sidebar-move-dur, .22s) var(--rg-sidebar-move-ease, cubic-bezier(.32,.72,0,1));
+        }
+    }
+
+    html:has(.rg-sidebar[data-rg-sidebar-mode='push']:popover-open) {
+        .rg-filter-fab:popover-open { translate: var(--rg-sidebar-w) 0; }
+    }
+
+    /* The un-animated close (runtime/sidebar.ts item 1) has to cover it too, or the FAB is the one
+       thing still sliding after the content has snapped. (0,5,1) against the 0,4,1 above. */
+    html:has(.rg-sidebar[data-rg-sidebar-mode='push'][data-rg-sidebar-anim='off']) {
+        .rg-filter-fab:popover-open { transition: none; }
+    }
+
+    /* ALL FOUR MOVING THINGS, not just the content column. The old rule covered `.rg-sidebar-pushed`
+       alone, which was complete when it was the only thing that moved; now the rail, its scrim and the
+       consumer's chrome animate too, and leaving any of them out means a reduced-motion user still
+       gets the slide. `transition: none` also disables the `display`/`overlay` discrete transitions,
+       so the rail goes back to appearing instantly — which is the correct reduced-motion answer, not a
+       regression to the pop this round removed. */
+    @media (prefers-reduced-motion: reduce) {
+        html:has(.rg-sidebar[data-rg-sidebar-mode='push']) {
+            .rg-sidebar-pushed,
+            .rg-sidebar-pushed-chrome,
+            .rg-filter-fab:popover-open { transition: none; }
+        }
+
+        .rg-sidebar[popover],
+        .rg-sidebar[popover] > .rg-sidebar-scrim { transition: none; }
+    }
+}

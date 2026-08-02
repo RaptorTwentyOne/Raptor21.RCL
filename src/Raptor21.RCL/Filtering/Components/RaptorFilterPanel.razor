@@ -21,10 +21,27 @@
     var panelId = $"{id}-rf";
 }
 
+@*
+    THE PANEL IS A TOP-LAYER SHELL, A SCRIM AND A SLIDING SHEET — the same three-element shape as the
+    grid's own filter drawer (Grid/Components/RaptorGridRegion.razor), and for the same two measured
+    reasons.
+
+    `popover="auto"` gives Escape and, decisively, a containing block that is the VIEWPORT: the panel
+    lives inside the consumer's content column, and RaptorSidebar's Push mode puts a `translate` on that
+    column, which used to re-resolve this `position: fixed` box against it (measured on the grid drawer,
+    the identical case: [140,0,360,723] -> [375,56,360,2519]).
+
+    THE SLIDE IS ON `.rf-sheet`, NOT ON THE SHELL, so the shell stays transform-free and its scrim can be
+    an ordinary `position: fixed; inset: 0`. The scrim is a DOM DESCENDANT because a popover's
+    `::backdrop` is not hit-testable (measured in runtime/sidebar.ts) — which also means the UA's
+    light-dismiss never fires here, so `data-rf-close` on the scrim and FilterPanelComponent's handler
+    are what close it.
+*@
 <div class="rf" id="@panelId" data-rg-component="filter" data-rf data-rf-id="@id">
+    <div class="rf-panel" id="@(panelId)-panel" popover="auto">
     <div class="rf-backdrop" data-rf-close></div>
 
-    <aside class="rf-panel" role="dialog" aria-modal="true" aria-labelledby="@(panelId)-title">
+    <aside class="rf-sheet" role="dialog" aria-modal="true" aria-labelledby="@(panelId)-title">
         <div class="rf-head">
             <h2 class="rf-title" id="@(panelId)-title">@model.Title</h2>
             <span class="rf-badge" hidden="@(!model.HasActive)">@model.ActiveCount</span>
@@ -182,6 +199,7 @@
             <button type="button" class="rf-done" data-rf-close>@L["Filter_ShowResults"]</button>
         </div>
     </aside>
+    </div>
 </div>
 
 @code {

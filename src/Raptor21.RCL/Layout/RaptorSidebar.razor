@@ -1,6 +1,35 @@
 @namespace Raptor21.RCL.Layout
 
-<aside class="@RootCssClass" id="@Id" hx-preserve="@PreserveAttribute" @attributes="AdditionalAttributes">
+@* Both bands Off — the component contributes no markup at all. This is the ONLY case decided on the
+   server, because it is the only one that does not depend on the viewport. *@
+
+@* ATTRIBUTES THE RUNTIME ADDS TO THIS ELEMENT, so nobody diffing server output against live DOM reads
+   them as drift:
+     tabindex="-1"  written by FocusTrap (Client/src/core/focus.ts) the first time a mobile drawer is
+                    opened, and NOT removed on release — the trap only ever adds it when absent. With
+                    Preserve="true" the node outlives navigations, so the attribute is permanent from
+                    the first open. Harmless (a -1 tabindex is skipped by Tab and only makes the rail
+                    programmatically focusable, which is what the trap needs); ModalComponent has had
+                    the identical behaviour since it started using the same class. *@
+@if (MobileMode is not RaptorSidebarMode.Off || DesktopMode is not RaptorSidebarMode.Off)
+{
+<aside class="@RootCssClass" id="@Id" hx-preserve="@PreserveAttribute"
+       popover="auto"
+       data-rg-sidebar-mode="@ModeToken(MobileMode)"
+       data-rg-sidebar-desktop="@ModeToken(DesktopMode)"
+       @attributes="AdditionalAttributes">
+
+    @* The dimmed page behind an open drawer, AND the surface that closes it.
+       Deliberately a real element inside the rail rather than the popover's own `::backdrop`: measured
+       in Chrome, `pointer-events` is not author-settable on a popover `::backdrop` — `!important` at
+       (0,3,1) still computed `none`, while the `background` in the very same rule applied. A backdrop
+       that cannot be hit means the "touch the page to close it" gesture lands on the PAGE: one real tap
+       beside an open rail was measured closing the drawer AND firing the `hx-confirm` Delete button it
+       landed on. As a DOM descendant this scrim is inside the popover for hit-testing and for
+       light-dismiss, so the tap is absorbed — which is also why closing it is wired explicitly in
+       Client/src/runtime/sidebar.ts; the UA's light-dismiss does not fire for a tap inside the subtree.
+       Rendered at every width and inert above 992px (`display: none`) — see _sidebar.scss §3. *@
+    <div class="rg-sidebar-scrim" aria-hidden="true"></div>
 
     @if (Brand is not null)
     {
@@ -11,7 +40,13 @@
 
     @if (ShowToggle)
     {
-        <button type="button" class="@ToggleCssClass" aria-label="@ToggleLabel">
+        @* aria-expanded, not aria-pressed: this collapses/expands the rail, and its collapsed form
+           (Rail) still shows the icons, so "expanded" is the honest state name. The client flips both
+           the attribute and data-rg-sidebar-desktop; see Client/src/runtime/sidebar.ts. *@
+        <button type="button" class="@ToggleCssClass" aria-label="@ToggleLabel"
+                data-rg-sidebar-rail-toggle
+                aria-controls="@Id"
+                aria-expanded="@(DesktopMode is RaptorSidebarMode.Rail ? "false" : "true")">
             @ToggleContent
         </button>
     }
@@ -28,6 +63,7 @@
     }
 
 </aside>
+}
 
 @code {
 
@@ -41,6 +77,23 @@
     /// rail that has to re-render per navigation.</summary>
     [Parameter]
     public bool Preserve { get; set; } = true;
+
+    /// <summary>How the rail presents itself below 992px. Default <see cref="RaptorSidebarMode.Drawer"/>.
+    /// <para>Emitted as <c>data-rg-sidebar-mode</c> ON THE RAIL ITSELF. It is deliberately not written to
+    /// the host's <c>&lt;html&gt;</c> element: a library that reaches out of its own subtree to mark the
+    /// document root owns state it cannot see the other writers of, which is exactly how the vendored
+    /// menu script this replaces ended up with a five-way <c>data-toggled</c> state machine. Layout rules
+    /// that need the mode read it back with <c>html:has(.rg-sidebar[data-rg-sidebar-mode="…"])</c>.</para>
+    /// </summary>
+    [Parameter]
+    public RaptorSidebarMode MobileMode { get; set; } = RaptorSidebarMode.Drawer;
+
+    /// <summary>How the rail presents itself from 992px up. Default <see cref="RaptorSidebarMode.Docked"/>.
+    /// Emitted as <c>data-rg-sidebar-desktop</c>. <see cref="RaptorSidebarMode.Drawer"/> and
+    /// <see cref="RaptorSidebarMode.Push"/> are mobile-band behaviours and are treated as
+    /// <see cref="RaptorSidebarMode.Docked"/> here — the stylesheet has no desktop rules for them.</summary>
+    [Parameter]
+    public RaptorSidebarMode DesktopMode { get; set; } = RaptorSidebarMode.Docked;
 
     /// <summary>Classes appended to the rail, after <c>rg-sidebar</c>.</summary>
     [Parameter]
@@ -108,5 +161,17 @@
 
     private static string Combine(string ownClass, string? extra)
         => string.IsNullOrWhiteSpace(extra) ? ownClass : $"{ownClass} {extra}";
+
+    /// <summary>Lowercase attribute token for a mode. Hand-written rather than <c>ToString().ToLower()</c>
+    /// so a renamed enum member breaks the build here instead of silently unmatching a selector.</summary>
+    private static string ModeToken(RaptorSidebarMode mode) => mode switch
+    {
+        RaptorSidebarMode.Drawer => "drawer",
+        RaptorSidebarMode.Push   => "push",
+        RaptorSidebarMode.Rail   => "rail",
+        RaptorSidebarMode.Docked => "docked",
+        RaptorSidebarMode.Off    => "off",
+        _                        => "drawer"
+    };
 
 }

@@ -35,8 +35,17 @@
     var regionId = $"{Id}-region";
     var gridClass = "raptor-grid" + (hasCards ? " rg-has-cards" : "") + (Compact ? " rg-compact" : "");
 
+    // The mark that hands the drawer's opener to the page shell. SERVER-RENDERED, on purpose: the two
+    // rules it gates (hide the FAB, drop the footer reservation the FAB needs) change the footer's height
+    // by 60px, so a mark applied from script after the swap would repaint the region once with the FAB
+    // and once without — a measured 60px shift on every page/filter change. Rendered here it arrives in
+    // the same markup as the rows and nothing ever shifts.
+    // Only when there is something to open: a grid with no filterable column renders no drawer and no FAB.
+    var filterEntryMark = FilterEntry == RaptorGridFilterEntry.PageChrome && popupColumns.Count > 0 ? "" : null;
+
     <div id="@regionId" data-rg-component="grid" class="@gridClass"
          data-grid-id="@Id" data-rg-virtual="false" data-rg-total="@prepared.TotalCount"
+         data-rg-filter-entry="@filterEntryMark"
          data-rg-cell-endpoint="@_endpoints.Cell">
         <form id="@formId"
               class="rg-form"
@@ -221,15 +230,58 @@
             @if (popupColumns.Count > 0)
             {
                 var activeFilters = _filterValues.Keys.Concat(_setSelections.Keys).Distinct(StringComparer.OrdinalIgnoreCase).Count();
-                <button type="button" class="rg-filter-fab" data-rg-filter-open aria-label="@L["Grid_OpenFilters"]">
+                var drawerId = $"{Id}-filter-drawer";
+                @* THE FAB CARRIES `popover="manual"` AND `MobileFilterDrawer` SHOWS IT AT MOUNT.
+
+                   It is `position: fixed` bottom-right and it lives inside the consumer's pushed content
+                   column, which becomes a CONTAINING BLOCK for its fixed descendants the moment
+                   RaptorSidebar's Push mode puts a `translate` on it. Measured on /roles at 500x823 before
+                   this attribute existed: FAB at rest [395,663,84,44], and on the FIRST frame of the rail
+                   opening [395.2,719] — 56px down (the pushed box's own top offset) in one frame, before
+                   any horizontal movement. The top layer is the only place a fixed box is guaranteed to
+                   resolve against the VIEWPORT whatever its ancestors do.
+
+                   `manual`, not `auto`: an `auto` popover is light-dismissed by the first tap anywhere and
+                   closes when another `auto` opens — the drawer below is one. A `manual` popover neither
+                   dismisses nor is dismissed, and it is the same mechanism the toast stack uses.
+
+                   IT DEGRADES. Card mode sets `display: inline-flex` on the FAB at (0,3,0), which beats the
+                   UA's `[popover]:not(:popover-open) { display: none }` on origin, so a FAB whose script
+                   never arrived is still visible and still opens the drawer — it just keeps the old
+                   containing-block behaviour until the grid chunk mounts. *@
+                <button type="button" class="rg-filter-fab" popover="manual"
+                        data-rg-filter-open aria-controls="@drawerId" aria-expanded="false"
+                        aria-label="@L["Grid_OpenFilters"]">
                     <span class="rg-ico rg-ico-filter"></span><span>@L["Grid_Filter"]</span>
                     @if (activeFilters > 0)
                     {
                         <span class="rg-filter-count">@activeFilters</span>
                     }
                 </button>
-                <div class="rg-filter-backdrop" data-rg-filter-close></div>
-                <div class="rg-filter-drawer">
+                @* THE DRAWER IS A TOP-LAYER SHELL, NOT THE SLIDING SURFACE ITSELF.
+
+                   `popover="auto"` buys the two things the class-driven version never had: Escape closes it
+                   (measured before: a real Escape left `drawerVisible=true` and `body { overflow: hidden }`
+                   still held), and its containing block is the viewport, so a rail opening underneath it
+                   can no longer stretch it (measured before: [140,0,360,723] -> [375,56,360,2519], right
+                   edge 735 on a 500px viewport).
+
+                   THREE ELEMENTS, NOT ONE, AND THAT IS WHAT KEEPS THE GEOMETRY HONEST. The shell is fixed,
+                   full-viewport and carries NO transform; `.rg-filter-backdrop` is the scrim and
+                   `.rg-filter-panel` is the surface that slides. Putting the slide on the shell would make
+                   the shell a containing block for its own fixed scrim — the mistake `_sidebar.scss` §3c
+                   documents having measured (the scrim came out the RAIL's width, 240 instead of 390) and
+                   had to work around with viewport units plus a counter-translate. With the transform one
+                   level in, the scrim is a plain `position: fixed; inset: 0` again.
+
+                   THE SCRIM IS A DOM DESCENDANT, like the rail's. A popover's `::backdrop` is not
+                   hit-testable (measured in `runtime/sidebar.ts`), so the dismissal tap would fall through
+                   to whatever page control sat under it. Being inside the popover also means the UA's
+                   light-dismiss never fires — every tap is an INSIDE tap — which is why the scrim carries
+                   `data-rg-filter-close` and `MobileFilterDrawer` closes it explicitly. *@
+                <div class="rg-filter-drawer" id="@drawerId" popover="auto">
+                    <div class="rg-filter-backdrop" data-rg-filter-close></div>
+                    <div class="rg-filter-panel">
                     <div class="rg-filter-head"><span>@L["Grid_Filters"]</span>
                         <button type="button" class="rg-filter-x" data-rg-filter-close aria-label="@L["Grid_CloseFilters"]">
                             <span class="rg-ico rg-ico-close"></span></button>
@@ -277,6 +329,7 @@
                     <div class="rg-filter-actions">
                         <button type="button" class="rg-pop-clear" data-rg-filter-clearall>Clear all</button>
                         <button type="button" class="rg-nav rg-filter-done" data-rg-filter-close>Done</button>
+                    </div>
                     </div>
                 </div>
             }
@@ -327,6 +380,9 @@
     [Parameter] public string? Include { get; set; }
     [Parameter] public string? ViewPermission { get; set; }
     [Parameter] public string? EditPermission { get; set; }
+
+    /// <summary>Where the card-mode filter drawer is opened from. See <see cref="RaptorGridFilterEntry"/>.</summary>
+    [Parameter] public RaptorGridFilterEntry FilterEntry { get; set; } = RaptorGridFilterEntry.Fab;
 
     /// <summary>When true (default), skips fetching data on the initial GET render so the page shell ships immediately;
     /// the grid then loads its first page via its own load POST, showing skeleton rows until data arrives.</summary>

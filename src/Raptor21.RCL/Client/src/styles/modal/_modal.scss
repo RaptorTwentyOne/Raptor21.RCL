@@ -1,21 +1,121 @@
+/* Viewport width at which the dialog becomes a bottom sheet.
+
+   Kept in sync with the application shell's mobile cut-off (the hamburger + drawer layout starts at
+   992px, so the shell is mobile up to 991.98px). This block used to break at 640px, which left the
+   641–991.98px band — tablet portrait, phone landscape, split screen — with a mobile shell around a
+   desktop, centre-aligned dialog. The loading skeleton, which borrows these very classes, was centred
+   with it: it painted in the middle of the screen and the real modal then opened from the bottom. */
+$rg-sheet-max: 991.98px;
+
+/* The cap on a sheet's height, and the exact height of a `full` sheet. */
+$rg-sheet-h: 92dvh;
+
+/* THE LOADING SKELETON'S HEIGHT FLOOR, PER SIZE CLASS.
+   These belong to the skeleton and to nothing else: they are the only heights in this file that are a
+   GUESS, because the placeholder is built before the response exists and its shimmer lines say nothing
+   about how tall the dialog will be. The real dialog never sees them (see the media query at the bottom
+   of this file for why that separation matters).
+
+   Calibrated against the dialogs this shell actually opens, as a fraction of what the class means on
+   the wide layout: `md` is a short form, `lg` a form or an action list, `xl` a table or a detail pane.
+   `sm` gets none — it is the imperative confirm (`runtime/confirm.ts`), two lines of text, and a floor
+   there would be pure dead space. `full` gets none either: it has a deterministic height already.
+
+   They are a FLOOR and not a height, so a remembered per-path height (set inline by `modalSkeleton.ts`
+   from the second open onward) simply overrides them without fighting a `!important` or a specificity
+   war, and a blueprint body taller than the floor is not clipped by it. */
+$rg-skel-min-md: 42dvh;
+$rg-skel-min-lg: 62dvh;
+$rg-skel-min-xl: 80dvh;
+
+/* ---- UA <dialog> neutralisation ---------------------------------------------------------------
+   `.rg-modal` is a native `<dialog>` opened with `showModal()` (Client/src/modal/open.ts for why), and
+   the UA sheet dresses one as a centred, bordered, padded, fit-content box. Every declaration below
+   exists to undo exactly one of those, and the block is the direct counterpart of
+   `layout/_sidebar.scss` §1, which does the same job for the rail's `popover`.
+
+   Specificity is deliberately zeroed with `:where()`. The declarations that have to lose are in the
+   USER-AGENT origin, and author origin beats user-agent origin regardless of specificity — so 0,0,0 is
+   enough to win there while still losing to `.rg-modal` (0,1,0) below and to every consumer rule. Where
+   `.rg-modal` restates a property (position, inset, display, padding, overflow-y) that restatement is
+   what applies; this block only has to cover what it does not mention.
+
+   THE ELEMENT MUST NOT BECOME A CONTAINING BLOCK. No `transform`, `filter`, `backdrop-filter`,
+   `perspective`, `will-change` or `contain: paint` on `.rg-modal` — the same prohibition
+   `_sidebar.scss` §1b writes for the rail, and for the same reason: dropdown and select panels
+   re-home INTO the open dialog (core/dom.ts `portalTarget`), position themselves `fixed` in VIEWPORT
+   coordinates, and any of those properties re-resolves them against the dialog's box instead. Measured
+   precedent on the rail: adding a transform collapsed a portalled sheet from 390px to 239px. The
+   entrance animation is on `.rg-modal-dialog`, a CHILD, which is where it has to stay. */
+:where(dialog.rg-modal) {
+    margin: 0;                  /* UA: margin: auto — centres the box and defeats `inset: 0` */
+    border-width: 0;            /* UA: border: solid. Width, not `border-style: none` — same reasoning
+                                   as the rail's: a consumer draws an edge by setting a WIDTH at 0,1,0
+                                   and a 0,0,0 reset owns the STYLE. */
+    max-inline-size: none;      /* UA: calc(100% - 6px - 2em) */
+    max-block-size: none;       /* UA: calc(100% - 6px - 2em) */
+    inline-size: auto;          /* UA: fit-content */
+    block-size: auto;           /* UA: fit-content */
+    background: none;           /* UA: background-color: canvas — the scrim is the ::before below */
+    color: inherit;             /* UA: color: canvastext */
+    overflow: visible;          /* UA: overflow: auto — `.rg-modal` re-declares overflow-y at 0,1,0 */
+}
+
+/* CLOSED MEANS INVISIBLE, at author specificity.
+   The UA already says `dialog:not([open]) { display: none }`, but `.rg-modal { display: flex }` below is
+   author origin and beats it — which would paint the dialog in the NORMAL layer for the frame between
+   the htmx swap and `ModalComponent` mounting (its chunk is lazy). That frame is precisely the state
+   this whole change exists to abolish: a modal in the normal layer sits under an open rail. Restated at
+   (0,1,1) so the closed state wins. Nothing renders a `.rg-modal` expecting it to show without JS —
+   dialogs arrive by htmx swap, which is JS by definition. */
+dialog.rg-modal:not([open]) { display: none; }
+
+/* The UA's own backdrop is emptied rather than left to double up with the `::before` scrim below. */
+dialog.rg-modal::backdrop { background: none; }
+
+/* The modal is a fixed layer covering the whole viewport, so Safari 26 (iOS 26) samples it to tint its
+   status bar and bottom toolbar — and it reads the CSS, not the pixels. A scrim declared here would
+   paint both ends of the browser chrome black for as long as the modal is open, so it lives on an
+   absolutely positioned `::before` instead; Safari ignores absolute boxes. That is also why the scrim
+   did NOT move to `::backdrop` when this became a `<dialog>`: `::backdrop` is a viewport-filling fixed
+   box and would put the sampling question straight back.
+
+   NO `z-index`. It had `--rg-z-modal` (400) and it was dead weight: the dialog is in the top layer,
+   which no normal-layer z-index reaches and which no normal-layer z-index is reached FROM. Ordering
+   against the rail, the toast and a second dialog is opening order now — see core/dom.ts.
+
+   `.rg-modal` only remains a scroll container as a safety net (see the dialog's max-height below, which
+   keeps it from overflowing in the first place). If it ever does scroll, the scrim scrolls with it —
+   the alternative, a scrim on the fixed element itself, is what has to be avoided. */
 .rg-modal {
     position: fixed;
     inset: 0;
-    z-index: 80;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 1rem;
-    background: rgba(0, 0, 0, .5);
+    padding: calc(1rem + env(safe-area-inset-top)) 1rem calc(1rem + env(safe-area-inset-bottom));
     overflow-y: auto;
     overscroll-behavior: contain;
+}
+
+.rg-modal::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: rgba(0, 0, 0, .5);
 }
 
 .rg-modal-dialog {
     display: flex;
     flex-direction: column;
     width: 100%;
-    max-height: calc(100vh - 2rem);
+    max-height: calc(100vh - 2rem);     /* fallback */
+    /* iOS: accounts for the dynamic browser chrome, and for the safe-area padding the overlay adds —
+       without subtracting the insets the dialog is taller than the space left for it, which turns the
+       overlay into a scroller and drags the scrim above off the bottom of the screen with it. */
+    max-height: calc(100dvh - 2rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
     border-radius: .5rem;
     background: var(--rg-bg);
     color: var(--rg-fg);
@@ -36,7 +136,7 @@
 .rg-modal-md   { max-width: 34rem; }
 .rg-modal-lg   { max-width: 48rem; }
 .rg-modal-xl   { max-width: 64rem; }
-.rg-modal-full { max-width: none; width: calc(100vw - 2rem); height: calc(100vh - 2rem); max-height: none; }
+.rg-modal-full { max-width: none; width: calc(100vw - 2rem); height: calc(100vh - 2rem); height: calc(100dvh - 2rem - env(safe-area-inset-top) - env(safe-area-inset-bottom)); max-height: none; }
 
 .rg-modal-head {
     display: flex;
@@ -69,19 +169,91 @@
     overflow-y: auto;
 }
 
-@media (max-width: 640px) {
+/* ---- Bottom sheet ----------------------------------------------------------------------------
+   Below `$rg-sheet-max` the dialog is a bottom sheet: full width, bottom-aligned, CONTENT-HEIGHT, and
+   never taller than `$rg-sheet-h`.
+
+   THE HEIGHT IS DELIBERATELY NOT DETERMINISTIC HERE ANY MORE — read this before making it so again.
+   It was, briefly: every size class except `sm` resolved to exactly `$rg-sheet-h` regardless of what
+   the dialog held. The reason was the loading skeleton, which borrows these classes and is built
+   before the response exists: with a content-driven height it painted a ~174px sheet that the graft
+   then blew up to 92vh in one frame, bottom edge pinned, top edge crossing most of the screen. Fixing
+   the height killed the jump — by making every dialog as tall as the tallest one. A four-button
+   "Quick Actions" menu became a full-screen sheet, which is what the user reported.
+
+   The mistake was binding the SHEET's height and the SKELETON's height to one rule. The skeleton is
+   the only element that needs a height it cannot derive from its content, because its content is a
+   guess; the real dialog has always known its own size. So the floor moved to `.rg-modal-skeleton`
+   below and the real dialog is free again: small modals are small, tall ones grow to the cap, and the
+   jump is no longer "content vs. 92vh" but "the floor's estimate vs. the content", which
+   `modalSkeleton.ts` narrows to zero from the second open of any given dialog by remembering the
+   height that dialog turned out to be.
+
+   `sm` needs no exception now — every class is content-sized. `full` does: its contract is "fills the
+   viewport" (`RaptorModalTagHelper`), and it is restated below because the desktop rule it would
+   otherwise inherit computes a different height. */
+@media (max-width: $rg-sheet-max) {
     .rg-modal { padding: 0; align-items: flex-end; }
 
     .rg-modal-dialog {
         max-width: none;
         width: 100%;
+        /* dvh, not vh: iOS resolves vh against the LARGE viewport, so a 92vh cap is taller than the
+           space actually on screen while the browser chrome is showing. Each pair is a fallback for
+           browsers without dvh followed by the real value. */
         max-height: 92vh;
+        max-height: $rg-sheet-h;
         border-radius: .75rem .75rem 0 0;
         animation-name: rg-sheet-in;
     }
 
+    /* `full` keeps a deterministic box — that is the whole meaning of the class. Stated here because
+       the desktop rule's `calc(100dvh - 2rem - env(…))` is wrong for a sheet that sits flush against
+       the bottom edge, and because `max-height: none` up there would uncap the sheet. */
+    .rg-modal-full {
+        height: 92vh;
+        height: $rg-sheet-h;
+        max-height: 92vh;
+        max-height: $rg-sheet-h;
+    }
+
+    /* The overlay drops its safe-area padding here (the sheet sits flush against the bottom edge), so
+       the sheet's own last row would otherwise sit under the home indicator. Given to the body rather
+       than the dialog so it scrolls with the content instead of shrinking the box. */
+    .rg-modal-body { padding-bottom: env(safe-area-inset-bottom); }
+
+    /* ---- The skeleton's floor -------------------------------------------------------------------
+       The whole of the determinism the sheet used to carry, moved onto the one element that needs it.
+
+       WHY THE SKELETON AND NOT THE DIALOG. A `min-height` on `.rg-modal-dialog` would be inherited by
+       the real dialog after the graft and put the dead space back — the sheet would still be 62dvh of
+       mostly nothing for a four-row action menu, just via a different property. Scoped to
+       `.rg-modal-skeleton`, the floor exists exactly as long as the placeholder does: `applyIncomingModal`
+       syncs the root's class list from the response, `rg-modal-skeleton` is dropped in that write, and
+       the floor stops matching in the same frame the real content lands. Nothing has to remove it.
+
+       WHY THIS DOES NOT BRING THE JUMP BACK. Before the deterministic-height fix the skeleton was 174px
+       against a 644px sheet — a 470px move of the top edge. With a floor the skeleton opens at its size
+       class's estimate, so the residual move is the ESTIMATE ERROR, and `modalSkeleton.ts` remembers
+       what each path's dialog actually measured and writes it inline over this floor, which takes the
+       error to zero from the second open of any given dialog.
+
+       Mobile only. Up on the wide layout the dialog is centred and content-height, a floor would push
+       the skeleton past dialogs that are genuinely short, and the size class is already width — the
+       axis that jumps there is handled by `rememberSize`. */
+    .rg-modal-skeleton .rg-modal-md { min-height: 42vh; min-height: $rg-skel-min-md; }
+    .rg-modal-skeleton .rg-modal-lg { min-height: 62vh; min-height: $rg-skel-min-lg; }
+    .rg-modal-skeleton .rg-modal-xl { min-height: 80vh; min-height: $rg-skel-min-xl; }
+
     @keyframes rg-sheet-in {
         from { transform: translateY(100%); }
         to   { transform: none; }
+    }
+
+    /* Re-stated inside the query: the blanket `animation: none` further up sets animation-name, and
+       this block's `animation-name: rg-sheet-in` comes later in the cascade, so without this the sheet
+       slid up even for users who asked for reduced motion. */
+    @media (prefers-reduced-motion: reduce) {
+        .rg-modal-dialog { animation-name: none; }
     }
 }

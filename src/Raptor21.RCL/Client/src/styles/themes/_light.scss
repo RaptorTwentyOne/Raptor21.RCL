@@ -48,4 +48,11 @@
      * A host that wants its own can set --sp-chart-label / --sp-chart-grid, same as every token here. */
     --rg-chart-label: var(--sp-chart-label, #8c9097);
     --rg-chart-grid: var(--sp-chart-grid, #f1f1f1);
+
+    /* Scrim behind an off-canvas surface (today: the sidebar drawer's ::backdrop).
+       Lighter on this theme than on dark for the usual reason — the same alpha over a white page reads
+       as a much heavier veil than over a near-black one, and the drawer already separates itself from a
+       light page by contrast alone. Matches the value the app-level off-canvas overlay this replaced
+       used on its light theme. */
+    --rg-scrim: var(--sp-scrim, rgb(17 24 39 / .5));
 }

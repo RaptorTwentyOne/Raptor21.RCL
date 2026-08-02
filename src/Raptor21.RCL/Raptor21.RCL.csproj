@@ -20,8 +20,12 @@
   <PropertyGroup Label="Package">
     <IsPackable>true</IsPackable>
     <PackageId>Raptor21.RCL</PackageId>
-    <!-- 0.x: the public surface is not yet a compatibility commitment. Move to 1.0.0 once it is. -->
-    <Version>0.1.0</Version>
+    <!-- 0.x: the public surface is not yet a compatibility commitment. Move to 1.0.0 once it is.
+         THE LOCAL DEFAULT, NOT THE PUBLISHED NUMBER. release.yml derives the version from the git tag
+         and passes -p:Version to both build and pack, which overrides this. It is kept in step with
+         CHANGELOG.md's newest heading so a `dotnet pack` run by hand, and the assembly version a
+         developer debugging against a project reference sees, name the release they are actually on. -->
+    <Version>0.2.0</Version>
     <Description>Server-rendered grid and filter components for ASP.NET Core Razor Pages, driven by htmx.</Description>
     <PackageTags>razor;razor-pages;grid;filter;htmx;rcl</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

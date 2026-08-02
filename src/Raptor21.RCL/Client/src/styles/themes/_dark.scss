@@ -39,4 +39,9 @@
      * borders the rest of the dark UI draws. */
     --rg-chart-label: var(--sp-chart-label, #8c9097);
     --rg-chart-grid: var(--sp-chart-grid, #3a3c3e);
+
+    /* Scrim behind an off-canvas surface — see _light.scss. Heavier here: the drawer's own surface is
+       close in luminance to the dark page behind it, so the veil is doing the separating. Matches the
+       value the app-level off-canvas overlay this replaced used on its dark theme. */
+    --rg-scrim: var(--sp-scrim, rgb(17 24 39 / .8));
 }

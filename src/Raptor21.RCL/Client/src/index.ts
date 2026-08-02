@@ -20,6 +20,9 @@ import {installProgressApi} from './progress/api'
 import {installNotifyApi} from './notify/api'
 import {ensureHtmx} from './runtime/htmx-boot'
 import {installPageLifecycle} from './runtime/page-lifecycle'
+import {installPageChrome} from './runtime/page-chrome'
+import {installGridFilterEntry} from './runtime/grid-filter-entry'
+import {installSidebar} from './runtime/sidebar'
 import {installNavigationUx} from './runtime/nav-ux'
 import {installConfirm} from './runtime/confirm'
 import {installModalSkeleton} from './modal/modalSkeleton'
@@ -39,6 +42,9 @@ installChartApi()
 installProgressApi()
 installNotifyApi()
 installPageLifecycle()
+installPageChrome()
+installGridFilterEntry()
+installSidebar()
 installNavigationUx()
 installConfirm()
 installModalSkeleton()

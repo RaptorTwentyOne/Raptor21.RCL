@@ -51,8 +51,23 @@ export class FocusTrap {
         this.root = root
     }
 
-    activate(): void {
-        this.previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    /**
+     * Starts trapping, and records what to hand focus back to on release.
+     *
+     * `origin` exists for one caller: a native `<dialog>` is already showing — and has already moved
+     * focus inside itself — by the time `ModalComponent` mounts on it, because `showModal()` is called
+     * the moment the element lands in the document while the component's chunk is still loading.
+     * Reading `document.activeElement` here would then record a control the dialog itself owns, which is
+     * removed with it, so the restore silently becomes a no-op and a keyboard user is returned to the
+     * top of the document. Whoever opened the dialog captured the outgoing element instead
+     * (modal/open.ts) and passes it in.
+     *
+     * Omitted or `null`, the reading is taken here, which is right for every trap that begins in the
+     * same turn as the interaction that created it (the mobile drawer, runtime/sidebar.ts).
+     */
+    activate(origin?: HTMLElement | null): void {
+        this.previous =
+            origin ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null)
         this.bindTo(this.root)
     }
 
@@ -81,7 +96,29 @@ export class FocusTrap {
 
     release(): void {
         this.root.removeEventListener('keydown', this.onKeydown)
-        if (this.previous?.isConnected && this.root.contains(document.activeElement)) this.previous.focus()
+        if (this.previous?.isConnected && this.shouldRestore()) this.previous.focus()
         this.previous = null
+    }
+
+    /**
+     * Whether closing this trap should hand focus back to where it came from.
+     *
+     * "Focus is still inside the trap" is the obvious test and it is the one that matters when the
+     * dialog is dismissed while it is still on screen. It is not sufficient, because the library closes
+     * a modal by REMOVING its element (`ModalComponent.close`) — that is what runs destroy() and lands
+     * here. Removing the node that holds focus drops focus to <body> before this method is reached, so
+     * the containment test can never pass on the ordinary close path and focus would be left on <body>:
+     * a keyboard or screen-reader user who opened a dialog from a menu is returned to the top of the
+     * document instead of to the control they opened it with.
+     *
+     * The second clause is deliberately narrow. It fires only when the trap's root is already detached
+     * AND focus went NOWHERE — body or nothing. If anything else has deliberately taken focus in the
+     * meantime (a control the dialog's own action focused, a following dialog in the stack), that
+     * element is the more recent intent and must be left alone.
+     */
+    private shouldRestore(): boolean {
+        const active = document.activeElement
+        if (this.root.contains(active)) return true
+        return !this.root.isConnected && (active === null || active === document.body)
     }
 }

@@ -73,6 +73,12 @@
   <data name="Grid_OpenFilters" xml:space="preserve">
     <value>Filtreleri aç</value>
   </data>
+  <data name="Grid_ColumnFilters" xml:space="preserve">
+    <value>Kolon filtreleri</value>
+  </data>
+  <data name="Grid_OpenColumnFilters" xml:space="preserve">
+    <value>Kolon filtrelerini aç</value>
+  </data>
   <data name="Grid_CloseFilters" xml:space="preserve">
     <value>Filtreleri kapat</value>
   </data>
@@ -121,5 +127,14 @@
   </data>
   <data name="Actions_Delete" xml:space="preserve">
     <value>Sil</value>
+  </data>
+
+  <data name="PageChrome_Actions" xml:space="preserve">
+    <value>İşlemler</value>
+    <comment>Accessible name of the page header's icon-only "…" menu trigger.</comment>
+  </data>
+  <data name="PageChrome_Back" xml:space="preserve">
+    <value>Geri</value>
+    <comment>Accessible name of the page header's icon-only back link.</comment>
   </data>
 </root>

@@ -1,0 +1,1463 @@
+@use '../tap' as tap;
+
+/* ================================================================================================
+   PAGE CHROME — the heading row emitted by `RaptorPageChrome`, and the page's projection into the
+   host's persistent mobile bar.
+
+   THREE THINGS THIS FILE DECIDES, AND WHY THEY ARE DECIDED HERE RATHER THAN ON THE SERVER
+
+   1. HOW MANY ACTIONS COLLAPSE — AND IT IS TWO DIFFERENT ANSWERS FOR TWO DIFFERENT SURFACES.
+
+      >=992px (K1, unchanged): one action stays inline, two or more become the header's own "…" menu.
+      <=991.98px (M1): NO threshold. Every control the header holds — the collapsible actions, the
+      primary action AND the tools box — is reached through the single "…" in the host's persistent
+      bar, and the in-page strip is not shown at all. K1 was the answer to "when should the DESKTOP
+      collapse a row of buttons"; on a phone the row itself is the cost, because the page body starts
+      underneath it. Measured on Orders at 430px: "Filters" took a full-width row of its own
+      (`flex: 1 1 100%`), "Export Excel" took the row under it, and the bar — which had the space —
+      showed nothing, because Export was the actions slot's only child and K1 left it inline.
+
+      Both counts are still RUNTIME values — permission gates make the same route render one action
+      for one user and two for another — so neither can be decided on the server. `:has()` counts
+      element children and gets it right per render, per user, with no parameter.
+
+   2. WHETHER THE IN-PAGE HEADING IS HIDDEN.  Only when the bar provably shows one instead. The rule
+      measures its own precondition (`body:has(#rg-topbar-slot .rg-topbar-title)`) rather than
+      assuming the projection chain worked, so the failure mode of a missing outlet, an unloaded
+      bundle or a page that opts out is TWO headings for one frame, not zero headings silently.
+
+   3. WHERE THE MENU OPENS.  Native `popover`, so the panel node never leaves the header. A portalled
+      panel (what `RaptorDropdown` does) would empty the element the count in (1) is reading.
+
+   NO `:empty` ANYWHERE.  Shipping browsers do not consider an element holding a whitespace text node
+   empty, and the server emits newlines around slot content, so every `:empty` test here would be
+   silently inverted. The tests below look at element children and at one identifying node.
+
+   NO PSEUDO-ELEMENT HIT BOXES.  Touch targets grow their LAYOUT box. An absolutely positioned
+   `::after` reaches past its own control and swallows taps meant for the neighbour; in-flow boxes
+   are disjoint by construction. See `../_tap.scss` for the full argument.
+
+   COLOURS COME FROM TOKENS.  Both themes resolve through `--rg-*`, which a host can re-point at its
+   own palette. Nothing here is a literal colour except the shadow alpha, which is an elevation cue
+   rather than a palette entry.
+   ================================================================================================ */
+
+
+/* ------------------------------------------------------------------------------------------------
+   Icons.
+
+   `.rg-ico`'s base rule is scoped to `.raptor-grid` in grid/_grid.scss. Rather than promote it to
+   the document — which would change what that class means for every consumer — the chrome carries
+   its own copy, scoped to the two controls that use it.
+   ------------------------------------------------------------------------------------------------ */
+
+.rg-pagechrome-back .rg-ico,
+.rg-topbar-back .rg-ico {
+    display: inline-block;
+    inline-size: 1.25em;
+    block-size: 1.25em;
+    background-color: currentColor;
+    -webkit-mask: var(--rg-ico) no-repeat center / contain;
+    mask: var(--rg-ico) no-repeat center / contain;
+}
+
+.rg-ico-back {
+    --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z'/%3E%3C/svg%3E");
+}
+
+
+/* ------------------------------------------------------------------------------------------------
+   Touch-target floor for the chrome's own icon-only controls.
+
+   Applied inside the touch/narrow query only: a 44px back arrow beside a 1.125rem title looks
+   broken with a mouse, and a mouse does not need it.
+   ------------------------------------------------------------------------------------------------ */
+
+@include tap.media {
+    .rg-pagechrome .rg-tap,
+    .rg-topbar-slot .rg-tap {
+        min-inline-size: var(--rg-tap-min);
+        min-block-size: var(--rg-tap-min);
+    }
+}
+
+
+/* ------------------------------------------------------------------------------------------------
+   The header itself.
+   ------------------------------------------------------------------------------------------------ */
+
+.rg-pagechrome {
+    /* Anchor for the desktop fallback position of the menu; harmless where anchor positioning is
+       supported, because the panel is in the top layer and positions against the viewport either way. */
+    position: relative;
+
+    /* The row itself. Declared here rather than borrowed from the host — see ROW LAYOUT below. */
+    display: flex;
+}
+
+.rg-pagechrome-titleblock {
+    min-inline-size: 0; /* lets the title ellipsis instead of forcing the flex row wider */
+}
+
+
+/* ------------------------------------------------------------------------------------------------
+   M1 — THE CONTROL BOX.  One element, two jobs, never both at once.
+
+   `.rg-pagechrome-menu` wraps BOTH control slots — the `page-header__tools` box and the
+   `page-header__actions` box — and carries `popover`. Below 992px it is the panel the persistent bar's
+   "…" opens; everywhere else it is not a box at all.
+
+   `display: contents` IS THE DEFAULT, AT EVERY WIDTH, and it is what makes this change free:
+     * it overrides the UA's `[popover]:not(:popover-open) { display: none }`, so the wrapper does not
+       hide the header's controls on the desktop it is not wanted on;
+     * an element with `display: contents` generates NO box, so its children are promoted to flex items
+       of `.rg-pagechrome` itself. The desktop row is therefore byte-for-byte what it was before the
+       wrapper existed — same items, same order, same auto margin on the title block, and the UA's
+       `[popover]` `position: fixed` / `inset` / `border` / `padding` apply to nothing;
+     * it is also the FALLBACK. Only the guarded block at the foot of this file turns the wrapper into a
+       real popover, and that guard requires the bar to be provably carrying both this page's title and
+       the trigger. A shell with no bar, a page that opted out of projection, a UA with no `:has()` or no
+       popover support: the wrapper stays `contents` and the page renders its controls in the header row
+       exactly as it did before M1. Nothing is ever reachable through the bar alone unless the bar is
+       there.
+
+   IT IS NOT `.rg-pagechrome-inline`. That panel is INSIDE the actions box and is the desktop overflow
+   menu; it could only ever contain the tools box by having the shell re-parent an author node, which is
+   the one thing this component does not do — `id`s, `hx-*`, `hx-swap-oob` targets and `data-rg-export*`
+   delegation all address the single copy of each control where the page rendered it. So there are two
+   nested popovers instead, each real in exactly the range where the other is `display: contents`.
+   ------------------------------------------------------------------------------------------------ */
+
+.rg-pagechrome-menu {
+    display: contents;
+}
+
+
+/* ------------------------------------------------------------------------------------------------
+   ROW LAYOUT — THREE BOXES, NOT TWO.
+
+   This header lays out FOUR boxes: the title block, an aside, the `page-header__tools` box and the
+   `page-header__actions` box. (Since M1 the last two are wrapped in `.rg-pagechrome-menu`, which is
+   `display: contents` at every width this section is about, so they remain flex ITEMS of the header and
+   every word below still describes the boxes that actually lay out.) The consuming app's
+   `.page-header--split` — the class this component
+   prints on itself — was written for exactly TWO (title + one control box) and expresses that as
+   `justify-content: space-between`. With three children `space-between` parks the middle one in the
+   MIDDLE OF THE ROW: the Filters button floating between the title and Export on Orders, the Upload
+   Media dropdown doing the same on Products. Orders carried a page-scoped patch for it; Products, the
+   only other three-box header in the app, never got one.
+
+   FIXED HERE, ONCE, because this component is now the ONLY producer of `.page-header--split`: every page
+   has migrated, and the two screens that never used the class (Recommendations, EPC detail) do not
+   render this component either. A rule in the component's own stylesheet is therefore the single truth
+   for every header that class describes — which is why the page-scoped copy in OrdersPage.razor.scss was
+   DELETED with this change rather than left standing as a second one.
+
+   ONE AUTO MARGIN, ON THE TITLE BLOCK. Not `justify-content`, not `gap`, and not
+   `margin-inline-start: auto` on the trailing boxes:
+
+     * An auto margin consumes ALL positive free space BEFORE `justify-content` distributes any, so this
+       single declaration supersedes the host's `space-between` without having to out-specify it or
+       restate it. Everything after the title block packs at the end of the row, in source order —
+       title | [tools][actions].
+     * WITH TWO CHILDREN IT IS THE SAME PIXELS AS BEFORE. `space-between` on two items puts one at each
+       end; an auto margin at the boundary between them does exactly that, same free space, same
+       result. With ONE child (a bare title) both are flex-start. So every two-box page — which is all
+       but two of them — renders unchanged, and that is the reason for an auto margin rather than a
+       `gap` or a `justify-content: flex-start`, either of which would have moved them.
+     * WITH NEGATIVE free space auto margins resolve to zero and `space-between` degrades to flex-start,
+       so an overflowing header still overflows at the end exactly as it did.
+     * It hangs off the TITLE BLOCK, which is rendered unconditionally and always first, so there is no
+       shape of this header in which the rule has no element to attach to. The shape Orders used
+       (`.page-header__tools { margin-inline-start: auto }`) needs the tools box to exist AND to be the
+       first trailing box — Products has the same three-box problem with a different first box, which is
+       exactly why that patch could not be copied to it.
+
+   BELOW 992px NOTHING MOVES. The mobile block at the foot of this file gives the header
+   `flex-wrap: wrap` and the tools box `flex: 1 1 100%`. Auto margins are resolved PER FLEX LINE and
+   count as zero while lines are being broken, so neither the wrapping nor the full-width tools row can
+   be affected by this. On a line that ends up holding two boxes, the auto margin and `space-between`
+   agree (second bullet). When the title block is hidden there (projection succeeded) it generates no
+   box and the margin does not exist at all.
+
+   `display: flex` IS DECLARED ON `.rg-pagechrome` and no longer borrowed. Until now the row was flex
+   above 768px only because the HOST's `.page-header--split` said so, and below 992px because the mobile
+   block below said so — i.e. the component's DESKTOP layout depended on a class the host happens to
+   define. The union of those two ranges is every width, so stating it here renders bit-for-bit what
+   rendered before while making the auto margin impossible to defeat by a host that styles
+   `.page-header--split` differently or not at all. Nothing else about the desktop row is claimed: no
+   `gap`, no `align-items` (the boxes still stretch to the title block's height), no `justify-content`.
+   The mobile block's own `display: contents` / `display: none` overrides are more specific and continue
+   to win over this.
+   ------------------------------------------------------------------------------------------------ */
+
+.rg-pagechrome > .rg-pagechrome-titleblock {
+    margin-inline-end: auto;
+}
+
+/* ---- The back link and the row it shares with the heading. ------------------------------------------
+
+   THE LINK IS THE HEADING'S SIBLING, NOT ITS CHILD, and that is an ACCESSIBILITY fact before it is a
+   layout one: an element's accessible name is computed from its contents, so an icon-only link carrying
+   `aria-label="Back"` inside an <h1> made the page's heading announce "Back <title>" at every
+   heading-navigation stop. The component's `BuildHeading` records why the two alternatives (hiding the
+   link from the tree, or pinning the heading's name with `aria-label`) are worse. What is left for this
+   file is putting the two back on one line.
+
+   `.rg-pagechrome-titlerow` EXISTS ONLY WHEN THERE IS A BACK LINK. A heading without one is still a bare
+   <hN> inside the title block — the box model of the 29 headings that never had a back link is untouched,
+   and this rule cannot reach them.
+
+   The row is what makes `display: flex` safe here: the flex container is the LIBRARY'S wrapper, not the
+   heading, so a page styling `.page-header__title` (font size, weight, colour — the host owns all three)
+   still gets exactly the display type it asked for. That was the reason the link used to be inline with a
+   baseline nudge; a real flex row centres the glyph against the heading's line box properly instead. */
+.rg-pagechrome-titlerow {
+    display: flex;
+    align-items: center;
+    gap: .25rem; /* replaces the link's old margin — one owner for the space between the two */
+    min-inline-size: 0;
+}
+
+.rg-pagechrome-titlerow > * {
+    min-inline-size: 0; /* the heading may shrink rather than force the header row wider */
+}
+
+/* The glyph is sized in `em` (see the icon rule at the top of this file), so OUTSIDE the heading it would
+   inherit the body's font size and shrink. `--rg-pagechrome-title-size` re-states the size it used to
+   inherit — the consuming app's `.page-header__title` is 1.125rem — as a host-owned token with that value
+   as the default, exactly like `--rg-topbar-h`. A host with a different title size re-points one custom
+   property; nothing here hard-codes the host's typography for good.
+
+   The BOX stays 1.75rem regardless, so the link's hit area, its hover chip and the row's height do not
+   move with the token. */
+.rg-pagechrome-back {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    inline-size: 1.75rem;
+    block-size: 1.75rem;
+    font-size: var(--rg-pagechrome-title-size, 1.125rem);
+    border-radius: .375rem;
+    color: inherit;
+    text-decoration: none;
+}
+
+.rg-pagechrome-back:hover {
+    background: var(--rg-hover);
+}
+
+.rg-pagechrome-back:focus-visible {
+    outline: 2px solid var(--rg-accent);
+    outline-offset: 2px;
+}
+
+
+/* ------------------------------------------------------------------------------------------------
+   TITLE-ONLY MODE — `TopbarOnly`. The page renders NO header row; the bar still gets the title.
+
+   For a page that owns its own header UI (an identity panel with its own back control, its own name,
+   its own status) and only ever wanted the persistent mobile bar to say which page this is. Rendering
+   the shell's header row there put a heading line above that panel from 992px up that the page had
+   never had.
+
+   WHAT IS EMITTED IS A HEADING, VISUALLY HIDDEN — NOT NOTHING. The host's bar is a MOBILE bar and is
+   `display: none` from 992px up, so "render nothing" would leave the document with no heading from this
+   shell at any desktop width: a page that reads as unnamed to a screen reader, in the one mode whose
+   entire purpose is to name the page. F2 (exactly one complete heading at every width) is what this
+   pair of rules keeps true, in all three states:
+
+     >=992px                     bar absent, this heading present in the tree, zero pixels        -> 1
+     <992px, projection working  the rule below removes this one, the bar's <h1> is the only one  -> 1
+     <992px, projection broken   the guard fails, this heading stays; nothing was visible either
+                                 way, and the document still has a name                           -> 1
+
+   The second rule is the SAME `body:has(#rg-topbar-slot .rg-topbar-title)` guard the mobile block at the
+   foot of this file uses before it hides a normal page's title block — one truth, tested the same way in
+   both places, so "the bar names the page" and "the page stops naming itself" cannot disagree.
+
+   `clip-path: inset(50%)` + a 1px box + `position: absolute` is the standard visually-hidden recipe, and
+   the ONLY one that keeps the node in the accessibility tree: `display: none`, `visibility: hidden` and
+   `hidden` all remove it, which would be the same as rendering nothing. Nothing here is a colour, and the
+   element is never painted, so there is no token to reach for.
+
+   The class list is deliberately tiny. This element carries NEITHER `page-header`/`page-header--split`
+   (host header spacing and a two-box row contract, neither of which is true of a hidden heading) NOR
+   `.rg-pagechrome` — so every layout rule in this file, including the row layout above, skips it by
+   construction rather than by a `:not()` somebody has to remember to add.
+   ------------------------------------------------------------------------------------------------ */
+
+.rg-pagechrome-sronly {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+@media (max-width: 991.98px) {
+
+    /* The bar provably carries this page's heading, so this one would be a SECOND h1 in the tree. */
+    body:has(#rg-topbar-slot .rg-topbar-title) .rg-pagechrome-sronly {
+        display: none;
+    }
+}
+
+.rg-pagechrome-aside {
+    min-inline-size: 0;
+}
+
+.rg-pagechrome-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem;
+}
+
+
+/* ------------------------------------------------------------------------------------------------
+   The "…" trigger.
+   ------------------------------------------------------------------------------------------------ */
+
+.rg-pagechrome-more {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2rem;
+    block-size: 2rem;
+    padding: 0;
+    border: 1px solid var(--rg-border);
+    border-radius: .5rem;
+    background: var(--rg-bg);
+    color: var(--rg-fg);
+    cursor: pointer;
+}
+
+.rg-pagechrome-more:hover {
+    background: var(--rg-hover);
+}
+
+.rg-pagechrome-more:focus-visible {
+    outline: 2px solid var(--rg-accent);
+    outline-offset: 2px;
+}
+
+.rg-pagechrome-more .rg-actions-ico,
+.rg-topbar-actions .rg-actions-ico {
+    display: block;
+    pointer-events: none;
+}
+
+
+/* ------------------------------------------------------------------------------------------------
+   An action.
+
+   Two presentations from ONE node. The base is a bordered inline button — what a single, uncollapsed
+   action looks like. Inside an open menu it becomes a full-width borderless row. Nothing is cloned or
+   re-rendered; the panel around it decides.
+   ------------------------------------------------------------------------------------------------ */
+
+.rg-pageaction {
+    /* Ink for a SOLID fill. It is not an accidental literal: both fills below are saturated brand
+       colours in BOTH themes (--rg-accent is #2196f3 in light and dark; --rg-success is #16a34a /
+       #22c55e), so the readable ink is white on either — which is exactly what this library's own solid
+       buttons already state (`.rg-btn-primary`/`.rg-btn-success`, forms/_form.scss). `--sp-on-solid` is
+       the host's override hook, the same `--sp-*` shape every token in themes/_light.scss uses, so a
+       host with a pale accent can re-ink without touching this file. Nothing reads it unless an
+       emphasis class is present. */
+    --rg-pageaction-on-fill: var(--sp-on-solid, #fff);
+
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .4rem;
+    padding: .35rem .7rem;
+    /* Three properties, one switch. `--rg-pageaction-fill` and `--rg-pageaction-ink` are UNSET here, so
+       every `var()` below resolves to its fallback and this is the neutral bordered button it has always
+       been. An emphasis class sets the two, and the same three declarations become a filled one — no
+       second rule re-stating padding/radius/typography, and, more importantly, ONE place for the menu to
+       undo (it resets the two properties; it does not have to re-state the neutral paint). */
+    border: 1px solid var(--rg-pageaction-fill, var(--rg-border));
+    border-radius: .5rem;
+    background: var(--rg-pageaction-fill, var(--rg-bg));
+    color: var(--rg-pageaction-ink, var(--rg-fg));
+    font: inherit;
+    font-size: .875rem;
+    line-height: 1.4;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+/* Hover goes through the same switch: a filled button keeps its fill (brightened by the rule further
+   down, as `.rg-btn-*` does), a neutral one gets the hover wash it always got. Without the fallback
+   shape here, `--rg-hover` — a translucent accent tint — would wipe a Success button to near-white on
+   hover, which is the exact bug the plain `background: var(--rg-hover)` used to have. */
+.rg-pageaction:hover {
+    background: var(--rg-pageaction-fill, var(--rg-hover));
+}
+
+.rg-pageaction:focus-visible {
+    outline: 2px solid var(--rg-accent);
+    outline-offset: 2px;
+}
+
+.rg-pageaction[disabled] {
+    opacity: .55;
+    cursor: default;
+}
+
+.rg-pageaction-ico {
+    flex: 0 0 auto;
+}
+
+
+/* ------------------------------------------------------------------------------------------------
+   EMPHASIS — an INLINE-ONLY idea (see `PageActionEmphasis`).
+
+   WHY IT EXISTS. Migrating a header's buttons into this slot flattened them: an Excel export that had
+   been `RaptorButton Variant="Success"` and an "Add …" that had been `Variant="Primary"` both became
+   the same bordered grey node. Inside the "…" menu that is CORRECT and stays — a list of filled colour
+   blocks is not a list. But on desktop a page with a single action does not get a menu at all (K1 leaves
+   it inline in the header row), and there the flattening removed the only ranking the row had. This is
+   also the shape the consuming app already uses one slot over: `PrimaryAction` is filled with
+   `--rg-accent` and keeps that fill in the menu, so a `Primary` emphasis here ranks a create verb the
+   same way whichever slot it was written in.
+
+   TWO CUSTOM PROPERTIES AND NOTHING ELSE. The paint is entirely in `--rg-pageaction-fill` /
+   `--rg-pageaction-ink`, consumed by the three declarations in `.rg-pageaction` above. That is what makes
+   the flattening below a two-line reset instead of a duplicate of the neutral button, and it is why the
+   reset cannot drift: there is no second copy of `background`/`color`/`border-color` to keep in sync.
+   ------------------------------------------------------------------------------------------------ */
+
+.rg-pageaction--primary {
+    --rg-pageaction-fill: var(--rg-accent);
+    --rg-pageaction-ink: var(--rg-pageaction-on-fill);
+}
+
+.rg-pageaction--success {
+    --rg-pageaction-fill: var(--rg-success);
+    --rg-pageaction-ink: var(--rg-pageaction-on-fill);
+}
+
+/* Filled buttons brighten rather than wash out on hover — the same gesture `.rg-btn-primary` and
+   `.rg-btn-success` make, so a page action and a form button do not disagree about what hover means.
+   Scoped to the emphasised classes: a `filter` on the neutral button would do nothing visible and would
+   still create a containing block for anything absolutely positioned inside it. */
+.rg-pageaction--primary:hover,
+.rg-pageaction--success:hover {
+    filter: brightness(1.07);
+}
+
+/* THE MENU FLATTENS IT — DESKTOP OVERFLOW PANEL (K1's two-or-more case).
+
+   The generic row rule further down already sets `background`/`border-color: transparent`, which is
+   enough to erase the FILL; it is the INK that would survive it and leave white-on-white text. Resetting
+   the two custom properties instead — `initial` on a custom property is the guaranteed-invalid value, so
+   every `var()` above falls through to its neutral fallback — flattens fill and ink together and needs
+   no knowledge of what the row rule happens to state.
+
+   Written with `.rg-pageaction` in the compound rather than as `> *` so its specificity (0,2,0) OUTRANKS
+   the emphasis classes (0,1,0) outright. Source order would have decided it correctly too, since these
+   rules sit above the menu section — but a rule that only works because of where it is in the file is a
+   rule the next edit breaks silently, and this one is the difference between a readable menu row and an
+   unreadable one. */
+.rg-pagechrome-inline:has(> * + *) > .rg-pageaction {
+    --rg-pageaction-fill: initial;
+    --rg-pageaction-ink: initial;
+}
+
+
+/* ------------------------------------------------------------------------------------------------
+   K1 — one inline, two or more in a menu. Pure CSS, evaluated per render.
+
+   `:has(> * + *)` is "at least two element children"; `:has(> :only-child)` is "exactly one";
+   `:not(:has(> *))` is "none". All three look at ELEMENT children only, so whitespace text nodes
+   cannot flip any of them. The `:not(:has(…))` shape is also what keeps the two `:has()`es in
+   separate compounds — `:has()` inside `:has()` is invalid.
+
+   WHY A PORTALLED PANEL CANNOT BE MISCOUNTED HERE — asked, and MEASURED, because `portalTarget`
+   (core/dom.ts) re-parents floating panels into whatever top-layer host is open, and a counting
+   selector that swallowed one would silently re-decide the whole K1/M1 layout. It does not, for two
+   independent reasons, and the second is what makes it structural rather than lucky:
+
+     1. THE COUNTED BOXES ARE NOT POPOVERS. Every count below is over the children of
+        `.rg-pagechrome-tools`, `.rg-pagechrome-actions` or `.rg-pagechrome-inline`, and `portalTarget`
+        only ever answers with an OPEN top-layer host. Inside this shell that is `.rg-pagechrome-menu`
+        or `.rg-pagechrome-inline` — nothing else can be named. Measured (Chrome 150, real bundles,
+        /Products at 386px, the bar menu open and the Tools dropdown opened inside it): the panel AND
+        its sheet backdrop landed as direct children of `.rg-pagechrome-menu`
+        (`[tools, actions, .rg-dd-backdrop[portal], .rg-dd-sheet[portal]]`), and the match counts for
+        the four counting rules were identical before and after — the "two or more" rule 0 → 0, the
+        `:only-child` pair 1 → 1, the M1 gate 0 → 0 — with no computed `display` flipping anywhere.
+        The M1 gate is safe for the same reason spelled out per clause: it tests
+        `menu > tools > *`, `menu > actions > inline > *` and `menu > actions > :not(more):not(inline)`,
+        and a direct child of the MENU matches none of the three.
+
+     2. `.rg-pagechrome-inline` — the one counted box that IS a popover — can only receive a panel while
+        it is OPEN, and by then its own count is already past every threshold below. It is opened by
+        `.rg-pagechrome-more`, which the "none" rule hides at zero children and the "one" rule hides at
+        exactly one; so an inline panel that can be opened at all already holds two or more, i.e.
+        `:has(> * + *)` is already true and `:has(> :only-child)` already false. An extra child cannot
+        flip a test that is already saturated. Measured on /Epc at 1800px with a dropdown injected into
+        the actions slot (the shape no page in the consuming app writes today, but the slot is
+        transparent and a consumer may): with the menu open and the dropdown open, the panel became
+        inline's FIFTH child while the two-or-more rule still matched exactly the three `.rg-pageaction`s
+        and the `:only-child` pair still matched nothing.
+
+   The ROW rule further down is the exception that proves the rule, and it is the one place the token
+   was needed: it styles `> *`, i.e. it does not count children, it PAINTS them. Same measurement, same
+   moment: the portalled panel kept `inline-size: 176px` (rect x = 1593, w = 176) instead of being
+   stretched to the viewport, because that selector excludes `[data-rg-portal]`. See its own note. */
+
+/* NONE — neither the panel nor the trigger takes up space or tab order. */
+.rg-pagechrome-actions:not(:has(> .rg-pagechrome-inline > *)) > .rg-pagechrome-inline,
+.rg-pagechrome-actions:not(:has(> .rg-pagechrome-inline > *)) > .rg-pagechrome-more {
+    display: none;
+}
+
+/* ONE — the trigger disappears and the panel stops being a box at all, so the single action becomes
+   a direct flex item of the action strip: byte-for-byte the box model a page had before migrating,
+   and the same single tap. `display: contents` overrides the UA's `[popover]:not(:popover-open)
+   { display: none }`, which is exactly what makes a closed popover render inline.
+
+   THIS IS A DESKTOP RULE IN EFFECT, and it is left unscoped on purpose rather than wrapped in a
+   `min-width` query. Below 992px it is reached in exactly one situation — the bar is not carrying this
+   page's trigger (no outlet, no bundle, `ProjectToTopbar` off), i.e. the M1 guard failed — and that is
+   precisely the situation in which a single action SHOULD still render inline in the page, because there
+   is no menu to reach it through. When the guard holds, the block at the foot of this file flattens the
+   panel to `display: contents` for ANY count and hides the trigger unconditionally, so this rule can
+   neither add nor remove anything there. One inline action on a phone with a working bar is therefore
+   impossible, which is the behaviour change M1 was asked for. */
+.rg-pagechrome-actions:has(> .rg-pagechrome-inline > :only-child) > .rg-pagechrome-more {
+    display: none;
+}
+
+.rg-pagechrome-inline:has(> :only-child) {
+    display: contents;
+}
+
+/* M1 — WHEN THE BAR PUBLISHES ITS "…".
+   NOT K1's threshold any more. The bar's button opens the whole control box, so the only question it can
+   ask is "is there ANY control in there", and the answer must be true for a lone Export button and for a
+   lone Filters form just as much as for a three-item menu — that is the entire point of the mobile
+   rework. The server publishes `.rg-topbar-actions` whenever the page supplied a control SLOT, because it
+   cannot count what a slot will render: the count is per-user (permission gates), which is the whole
+   reason the gate lives here.
+
+   THREE `:not(:has())`s, ALL of which must hold before the button is hidden — i.e. the button shows if
+   ANY of the three finds something. They are the three places a control can be, and they are written as
+   negations of a disjunction because `:has()` may not be nested:
+     tools box has an element child                    → a filter, a period select, a header form
+     actions panel has an element child                → a collapsible action
+     actions box has a child that is neither the       → a primary action (its markup is the author's, so
+       "…" trigger nor the panel                          it can only be identified by exclusion)
+   A panel that renders nothing is NOT a control: the "…" trigger is emitted alongside an empty panel
+   whenever `Actions` was supplied but every item was gated away, which is exactly the 0-control page that
+   must not get a bar button or an empty menu.
+   Read from `body` because the trigger sits in the persistent bar and the box it names stays in
+   `#app-root`, so no single ancestor holds both and the subject has to be the document. The inert
+   `<template>` copy of the payload inside `#app-root` is a separate document fragment and matches
+   nothing here.
+   `display: none` and not `visibility`/`opacity`: it must leave the tab order and the accessibility tree
+   completely, or a phone user on a page with no controls would find an invisible "…" between the title
+   and the edge of the bar. */
+body:not(:has(.rg-pagechrome-menu > .rg-pagechrome-tools > *)):not(:has(.rg-pagechrome-menu > .rg-pagechrome-actions > .rg-pagechrome-inline > *)):not(:has(.rg-pagechrome-menu > .rg-pagechrome-actions > :not(.rg-pagechrome-more):not(.rg-pagechrome-inline))) .rg-topbar-actions {
+    display: none;
+}
+
+/* The second half of this gate — "and never above the host shell's mobile breakpoint" — is NOT here. It
+   is a bare `.rg-topbar-actions` selector, so it has to sit AFTER the block that gives the button its
+   `display: inline-flex`, or the two tie on specificity and source order hands the desktop back to the
+   visible one. It is at the foot of that block instead; see "The bar's '…' trigger". */
+
+/* TWO OR MORE — a real menu. The UA already hides a closed popover; only the open state needs rules. */
+.rg-pagechrome-inline:popover-open {
+    display: flex;
+    flex-direction: column;
+    gap: .1rem;
+    margin: 0;
+    padding: .3rem;
+    border: 1px solid var(--rg-border);
+    border-radius: .5rem;
+    background: var(--rg-surface);
+    color: var(--rg-fg);
+    box-shadow: 0 8px 28px rgb(0 0 0 / .18);
+}
+
+/* Menu rows. Keyed on the panel holding two or more children rather than on `:popover-open`, so the
+   layout is already correct in the frame the panel is revealed in. Applies to whatever the author put
+   in the slot — a RaptorPageAction, a raw button, a link — because the slot is transparent and the
+   shell must not require a marker attribute of the AUTHOR.
+
+   `:not([data-rg-portal])` IS NOT SUCH A MARKER: nothing an author writes carries it. It is stamped by
+   the runtime, in `core/dom.ts` (`markPortalled`), on the floating layers `portalTarget` re-parents —
+   the dropdown panel, its sheet backdrop, the select panel. Those land INSIDE this popover while it is
+   open, precisely so they paint in its top-layer subtree, and without the exclusion this rule reads them
+   as menu rows.
+
+   MEASURED (Chrome 1280x800, real bundles, the desktop overflow menu open with three actions, one of
+   them a RaptorDropdown; single variable = the panel's parent, the SAME node moved and moved back):
+   under `<body>` `inline-size: 272.602px`; inside `.rg-pagechrome-inline` `inline-size: 1280px`, rect
+   x = 8 → 1298 on a 1280px viewport. A panel positions itself `fixed` (core/anchor.ts), so `100%`
+   resolves against the VIEWPORT and not against this flex box — the panel does not merely become
+   full-width, it becomes wider than the screen and hangs off the end. `justify-content` went
+   `normal` → `flex-start` with it, re-distributing the panel's own rows.
+
+   `:where()` and not a bare `:not()`: the exclusion must not raise this rule's specificity. It is (0,1,0)
+   today, which is a TIE with a consuming app's own single-class button rules and therefore decided by
+   source order; `> *:not([data-rg-portal])` would be (0,2,0) and would start winning paint arguments it
+   has never won, on every real row, as a side effect of a fix about panels. `:where()` contributes
+   nothing, so the row rule keeps landing exactly where it landed before — on rows only.
+
+   NOT THE WHOLE PAINT, IN PRACTICE. Measured on that same panel, `background` and `border-color` did NOT
+   come from here: `.rg-dd-panel` states its own and, at equal specificity, wins on source order
+   (measured `rgb(245 245 246)` / `rgba(24 29 31 / .15)`, radius 7.2px — the panel's, not the .375rem
+   below). Only `inline-size` and `justify-content` actually reached it. The exclusion is still written
+   for the whole rule rather than for `inline-size` alone: which of two equal-specificity declarations
+   wins must not be what keeps a floating panel intact. */
+.rg-pagechrome-inline:has(> * + *) > *:where(:not([data-rg-portal])) {
+    inline-size: 100%;
+    justify-content: flex-start;
+    text-align: start;
+    border-color: transparent;
+    background: transparent;
+    border-radius: .375rem;
+}
+
+@include tap.media {
+    .rg-pagechrome-inline:has(> * + *) > *:where(:not([data-rg-portal])) {
+        min-block-size: var(--rg-tap-min);
+    }
+}
+
+
+/* ------------------------------------------------------------------------------------------------
+   Where the menu opens.  AN ANCHORED DROPDOWN AT EVERY WIDTH.
+
+   An open popover is in the TOP LAYER; its containing block is the viewport, so `position: absolute`
+   is meaningless there and every rule below is `fixed`.
+
+   THIS USED TO BE A BOTTOM SHEET BELOW 992px, AND THE REASONING IS RECORDED HERE BECAUSE IT WAS
+   OVERRULED, NOT FORGOTTEN. The sheet was chosen for thumb reach (a menu hanging off the top bar puts
+   every row in the hardest third of a 6.9" phone) and for consistency with `RaptorDropdown` and the
+   modal, which both become sheets at this same threshold. The user's verdict, on the device, is that a
+   full-width panel rising from the bottom edge reads as a MODAL — the same weight as a dialog — for
+   what is a three-row overflow menu, and that it hides the page while it is open. A dropdown pinned to
+   the button that opened it says "this belongs to that button" with no scrim and no page-sized box.
+   Reach is the cost, and it is paid knowingly: these are the page's least-frequent actions.
+
+   The two obstacles the old note listed are the two things the rules below have to solve, so they are
+   answered rather than avoided:
+
+     ANCHOR IDENTITY. `anchor-name` is document-scoped and resolves to the LAST element in tree order
+     carrying the name, so the header's trigger and the bar's copy CANNOT share one name — which of the
+     two won would depend on whether the consuming shell renders its bar before or after `#app-root`,
+     which is the shell's business and not knowable here. They therefore carry DIFFERENT names, and the
+     panel picks between them with the same `:has()` test the rest of this file uses to decide whether
+     the bar is really carrying the trigger. Note the shell also emits an inert `<template>` copy of the
+     bar payload inside `#app-root`; template content is a separate document fragment, so its button is
+     matched by neither `anchor-name` nor `:has()`, and there is exactly one live anchor either way.
+
+     SUPPORT. Every anchored inset below is stated TWICE: first as a plain length, then inside
+     `@supports (anchor-name: --a)`. A UA without anchor positioning keeps the plain values, which put
+     the panel exactly where the anchored branch would put it for the common case (right-aligned, just
+     under the bar) rather than in a corner. And every `anchor()` carries its own fallback length, so a
+     named anchor that is absent or `display: none` — a page that opted out of projection, a shell
+     without a bar — degrades to that same position instead of making the declaration invalid at
+     computed-value time, which would drop the inset entirely and is NOT the same as falling back to
+     the earlier declaration.
+
+   NO ::backdrop PAINT. The sheet dimmed the page to justify covering it; a dropdown covers ~12rem and
+   must not. The UA's transparent default is kept, and light-dismiss (`popover="auto"`) still closes on
+   a tap anywhere outside. Dropping the rule also removes a full-viewport FIXED painted box from the
+   document while the menu is open, which is one less thing for Safari 26 to sample for its status-bar
+   tint. The panel itself cannot become a tint source either: it starts a bar's height below the top of
+   the viewport, far outside the ~4px band. */
+
+/* Shared geometry, both branches, both widths.
+
+   `inset-inline-start: auto` IS REQUIRED and is not tidying-up.
+   The UA stylesheet gives `[popover]` `inset: 0` together with `width: fit-content`. Setting only the
+   end inset leaves the start inset at 0, which over-constrains the box: with a fit-content width and
+   both insets resolved, CSS discards the END inset in LTR and the panel renders hard against the left
+   edge of the viewport. Measured at 1280px: the panel's right edge landed 1060px away from the
+   trigger's. Releasing the start inset is what lets the end inset position the box.
+
+   WIDTH IS THE CONTENT'S. `inline-size` is left at the UA's `fit-content`; the floor keeps a two-word
+   action from producing a sliver, and the ceiling keeps a long one from reaching the opposite edge of
+   a 375px screen. The rows inside are `inline-size: 100%` (K1 section above) — against a fit-content
+   parent that percentage is treated as `auto` while the width is being resolved, so the rows follow
+   the panel rather than the panel following the rows. */
+.rg-pagechrome-inline:popover-open {
+    position: fixed;
+    inset-block-end: auto;
+    inset-inline-start: auto;
+    min-inline-size: 12rem;
+    max-inline-size: calc(100vw - 2rem);
+    margin-block-start: .35rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+/* Both anchors, declared once and unconditionally: the two media branches below each name one of them,
+   and a name that no rule references costs nothing. Separate names, per ANCHOR IDENTITY above. */
+@supports (anchor-name: --a) {
+    .rg-pagechrome-more {
+        anchor-name: --rg-pagechrome-anchor;
+    }
+
+    .rg-topbar-actions {
+        anchor-name: --rg-topbar-anchor;
+    }
+}
+
+/* Phone/tablet: hangs off whichever trigger is actually on screen.
+
+   The fallback insets match the consuming shell's bar — `--rg-topbar-h` plus the top safe-area inset —
+   because that is where the trigger is when the projection worked, which is the case on every page that
+   has a menu at all. The bar's height belongs to the HOST (this library does not render the bar), so it
+   is read as a token with the shell's current 3.5rem as the default: a host with a taller bar re-points
+   one custom property instead of patching a selector it does not own. Nothing else in this file depends
+   on it, and the anchored branch below does not depend on it at all.
+
+   When projection did not work the in-page "…" is a little further down the page and the anchored branch
+   tracks it; only a UA with no anchor positioning AND a failed projection sees the panel detach from its
+   button, and it is still a readable dropdown in the top-right rather than a corner box. */
+@media (max-width: 991.98px) {
+    .rg-pagechrome-inline:popover-open {
+        inset-block-start: calc(var(--rg-topbar-h, 3.5rem) + env(safe-area-inset-top));
+        /* `--rg-scroll-gutter` for the reason `.rg-topbar-slot` states in full: this inset is measured
+           from the VIEWPORT's trailing edge, and a scroll lock moves that edge. Only the un-anchored
+           branch carries the term — the `@supports` branch below follows a trigger that the slot rule
+           already holds still, and compensating there would detach the panel from its own button. */
+        inset-inline-end: calc(.5rem + var(--rg-scroll-gutter, 0px));
+        /* Bottom-bounded so a long menu scrolls inside itself instead of running off the screen. */
+        max-block-size: calc(100dvh - var(--rg-topbar-h, 3.5rem) - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 1rem);
+    }
+
+    @supports (anchor-name: --a) {
+
+        /* The header's own trigger — the ONLY anchor this panel can have below 992px now.
+           It opens here in exactly one case: the bar is not carrying this page's trigger (no outlet, no
+           bundle, `ProjectToTopbar` off), so the M1 guard failed and `.rg-pagechrome-more` is the visible
+           control the user pressed. When the guard holds, this panel is `display: contents` inside the
+           bar's own menu and never opens at all, which is why the `body:has(#rg-topbar-slot
+           .rg-topbar-actions)` override that used to re-anchor it to the bar's button is GONE rather
+           than kept "just in case": the state it described — this panel open while the bar carries a
+           trigger — is now unreachable, and a rule for an unreachable state is a rule nobody can test.
+           The bar's button anchors `.rg-pagechrome-menu` instead; see the guarded block below. */
+        .rg-pagechrome-inline:popover-open {
+            position-anchor: --rg-pagechrome-anchor;
+            inset-block-start: anchor(bottom, calc(var(--rg-topbar-h, 3.5rem) + env(safe-area-inset-top)));
+            inset-inline-end: anchor(right, .5rem);
+        }
+    }
+}
+
+/* Desktop: aligned to the header's trigger where anchor positioning exists, pinned to the header's
+   top-right where it does not. The bar does not exist up here, so there is only one anchor to choose. */
+@media (min-width: 992px) {
+    .rg-pagechrome-inline:popover-open {
+        inset-block-start: 4.5rem;
+        /* Viewport-measured inset, so it carries the scroll-lock compensation; the anchored branch below
+           does not, for the reason given at the mobile rule above. */
+        inset-inline-end: calc(1.5rem + var(--rg-scroll-gutter, 0px));
+        max-block-size: calc(100dvh - 6rem);
+    }
+
+    @supports (anchor-name: --a) {
+
+        /* Valid unconditionally because the trigger precedes the panel in DOM order — anchor
+           positioning requires the anchor to come first, which is why the markup is ordered that way. */
+        .rg-pagechrome-inline:popover-open {
+            position-anchor: --rg-pagechrome-anchor;
+            inset-block-start: anchor(bottom, 4.5rem);
+            inset-inline-end: anchor(right, 1.5rem);
+        }
+    }
+}
+
+
+/* ------------------------------------------------------------------------------------------------
+   The persistent mobile bar's slot.
+
+   `pointer-events` is set on the CONTAINER and re-enabled on controls, not withheld from the title
+   node. The heading here can CONTAIN a control: the projector wraps `.rg-topbar-titletext` in
+   `.rg-topbar-titlebtn` whenever the text is really clipped (U3), and that button is the only way to
+   read a truncated title on a phone. `pointer-events: none` on the heading would make it dead while
+   still looking tappable. (The in-page heading no longer contains anything interactive at all — the back
+   link is its SIBLING, see the title-row section above — so nothing else in either surface depends on
+   this.)
+
+
+   U1 — WHY THIS IS A THREE-COLUMN GRID AND NOT A FLEX ROW.
+
+   The title has to look centred ON THE BAR. A flex row cannot do that here, because the two ends of the
+   bar are not symmetric and one of them is not even in the layout:
+
+     leading   the consuming shell's hamburger is `position: fixed` (it has to be — it is one of the
+               elements Safari samples for the status-bar tint, and the shell keeps it out of the swapped
+               region). A fixed box is not a flex item, so it occupies NO width here; the shell pays for
+               it with a reservation instead.
+     trailing  the actions "…" is an ordinary in-flow child — and it is present on some pages and absent
+               on others, which under `justify-content: center` would move the title every time the user
+               navigated between the two.
+
+   A grid with THREE columns, whose two side columns are the SAME token, fixes both at once. The middle
+   column's centre is the bar's centre by construction: the side columns are equal, so it does not matter
+   what is or is not in them. The trailing button being hidden by the K1 gate changes nothing, which is
+   exactly the "still centred when there is no actions button" requirement — the column is reserved, not
+   the button.
+
+   THE TOKENS
+
+     --rg-topbar-reserve  space at the LEADING edge that is already spoken for by host chrome the slot
+                          cannot see (the fixed hamburger). Owned and set by the host, from the same
+                          numbers that position that chrome. 0 by default: a host with no leading chrome
+                          gets a slot that reserves nothing.
+     --rg-topbar-back     the in-payload back link's own width, switched on by `:has()` rather than
+                          hard-coded, so a page with a back link widens BOTH sides and stays centred
+                          instead of pushing the title sideways.
+
+   `max(…, 2.75rem)` is the floor: even with no reserve and no back link the trailing column must still
+   be able to hold a 44px tap target, and the leading column must match it or the title is off-centre by
+   the width of a button.
+
+   `align-self: stretch` makes the slot as tall as the bar's content box. It is what lets the full-text
+   panel anchor to the bar's BOTTOM EDGE rather than to the bottom of a text line floating inside it; the
+   grid's own `align-items: center` keeps every child vertically centred regardless.
+   ------------------------------------------------------------------------------------------------ */
+
+.rg-topbar-slot {
+    --rg-topbar-reserve: 0px;
+    --rg-topbar-back: 0px;
+    --rg-topbar-side: max(calc(var(--rg-topbar-reserve) + var(--rg-topbar-back)), 2.75rem);
+
+    display: grid;
+    grid-template-columns: var(--rg-topbar-side) minmax(0, 1fr) var(--rg-topbar-side);
+    align-items: center;
+    align-self: stretch;
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    pointer-events: none;
+
+    /* THE SLOT GIVES BACK WHATEVER THE PAGE SCROLL LOCK TOOK — see `--rg-scroll-gutter` in
+       ../_tokens.scss. The bar this slot lives in is the HOST's, and it is `position: fixed`, so it is
+       sized by the VIEWPORT: locking the page hides a classic scrollbar, the viewport widens, and the
+       bar widens with it. The lock's `padding-right` on <body> cannot reach a fixed box.
+
+       MEASURED (Chrome 150, real bundles, /roles in a 386px frame, the app's 5px `::-webkit-scrollbar`,
+       one variable = a library scroll lock being taken): the host bar's trailing edge went 381 → 386,
+       the "…" trigger inside this slot went x 329 → 334, and the page-chrome menu — which is
+       `position-anchor`ed to that trigger — went with it. A menu the user is looking at slides 5px
+       sideways the moment a sheet opens inside it.
+
+       A MARGIN, NOT A PADDING: the inline padding of this box belongs to the HOST (it is the bar's own
+       breathing room, and it differs per shell), so the library must not restate it. A trailing margin
+       composes with whatever that padding is and shrinks the slot's outer box by exactly the width the
+       viewport gained, which puts every column — the centred title included — back where it was.
+
+       This is also why the anchored branches of the two menu popovers below do NOT add the term: with
+       the slot still, their anchor is still, and adding it there would move a panel AWAY from the button
+       it belongs to. */
+    margin-inline-end: var(--rg-scroll-gutter, 0px);
+}
+
+/* A back link is in the payload → both side columns grow by its width, so the title's centre does not
+   move. `:has()` and not a modifier class: whether the link is there is the payload's business, and the
+   projector writes that payload without knowing anything about this stylesheet. */
+.rg-topbar-slot:has(.rg-topbar-back) {
+    --rg-topbar-back: 2.75rem;
+}
+
+.rg-topbar-slot a,
+.rg-topbar-slot button {
+    pointer-events: auto;
+}
+
+/* ---- The centred title block (U1/U2). --------------------------------------------------------------
+
+   Two rows: the heading, and under it the description at a smaller size. Both are single-line with an
+   ellipsis, because a bar whose height depended on the length of a runtime string would shift the whole
+   page's `margin-top` per navigation — the full text lives in the panel below instead.
+
+   BUDGET, measured against the shell's 3.5rem (56px) bar so the bar's height, `#rg-top-glass` and the
+   `.content` margin all stay exactly as they are:
+       title    1rem   x 1.2  = 19.2px
+       padding  .25rem x 2    =  8px    (the trigger's vertical breathing room — see below)
+       desc     .75rem x 1.25 = 15px
+                                 ----
+                                 42.2px in a 56px bar, ~7px clear above and below.
+   A description-less page renders row one only and the block is centred by the grid, so nothing about
+   the single-line case changes.
+
+   `text-align: center` is on the BLOCK, not on the slot: the back link and the "…" are placed by their
+   own columns and must not inherit it. */
+.rg-topbar-titleblock {
+    grid-column: 2;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-inline-size: 0;
+    text-align: center;
+}
+
+.rg-topbar-title {
+    margin: 0;
+    min-inline-size: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.2;
+    color: var(--rg-fg);
+}
+
+/* The truncation moved OFF the heading and onto its text span. The heading may now contain the trigger
+   button the projector wraps around that span, and clipping on the heading would clip the button's focus
+   ring along with it. */
+.rg-topbar-titletext {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* ---- The title trigger (U3). -----------------------------------------------------------------------
+
+   Written into the DOM by `runtime/page-chrome.ts` ONLY when the title or the description is really
+   clipped, so a page whose title fits has no button at all — no tab stop, no pointer affordance, no
+   control that does nothing. It looks like the heading it wraps; the only thing it adds visually is a
+   focus ring and a pointer.
+
+   *** GEOMETRY CONTRACT — DO NOT ADD INLINE PADDING OR A BORDER ***
+   The projector decides whether this button should exist by measuring `.rg-topbar-titletext`, and it
+   makes that measurement with the button both present and absent. Zero inline padding and no border are
+   what make the span's containing block the same width in both states; give it either and the answer can
+   flip on every measurement, wrapping and unwrapping forever. `padding-block` is safe — the block axis
+   is not what is being measured — and is what gives the title row a finger-sized target without a
+   pseudo-element hit box (which this file forbids everywhere else, for the reasons in `../_tap.scss`). */
+.rg-topbar-titlebtn {
+    display: block;
+    inline-size: 100%;
+    min-inline-size: 0;
+    margin: 0;
+    padding-block: .25rem;
+    padding-inline: 0;
+    border: 0;
+    border-radius: .25rem;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: inherit;
+    cursor: pointer;
+}
+
+.rg-topbar-titlebtn:focus-visible {
+    outline: 2px solid var(--rg-accent);
+    outline-offset: -2px;
+}
+
+/* The description. Subordinate to the title by SIZE and by tone, both derived from the theme's own
+   foreground token so a host that re-points `--rg-fg` keeps the relationship in either theme. */
+.rg-topbar-desc {
+    margin: 0;
+    min-inline-size: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: .75rem;
+    font-weight: 400;
+    line-height: 1.25;
+    color: color-mix(in srgb, var(--rg-fg) 62%, transparent);
+}
+
+/* Dark themes render this title slightly recessed, matching how the consuming app already treats
+   `.page-header__title`. Expressed as a mix of the theme's own foreground token rather than a literal,
+   so a host that re-points `--rg-fg` keeps the relationship. */
+:root.dark .rg-topbar-title,
+.dark .rg-topbar-title {
+    color: color-mix(in srgb, var(--rg-fg) 70%, transparent);
+}
+
+/* Kept one step below the title's own recession, so the two lines stay ranked in dark exactly as they
+   are in light. */
+:root.dark .rg-topbar-desc,
+.dark .rg-topbar-desc {
+    color: color-mix(in srgb, var(--rg-fg) 45%, transparent);
+}
+
+.rg-topbar-back {
+    grid-column: 1;
+    justify-self: end;
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2.5rem;
+    block-size: 2.5rem;
+    color: inherit;
+    text-decoration: none;
+}
+
+.rg-topbar-back:focus-visible {
+    outline: 2px solid var(--rg-accent);
+    outline-offset: -2px;
+}
+
+
+/* ------------------------------------------------------------------------------------------------
+   The bar's "…" trigger.
+
+   LAYOUT — the slot's third grid column, pinned to its trailing edge. See the slot's own note for why
+   the columns exist; the short version is that the column is reserved whether or not this button is in
+   it, so hiding it (K1, one action only) does not move the centred title.
+
+   `grid-column` + `justify-self` REPLACED an auto inline-start margin. The margin was the flex-era way
+   of pushing this to the far end, and it cannot survive the centred layout: an auto margin consumes the
+   leftover free space, so a short title left the button far from the edge and a long one pulled it back
+   — the exact drift the reserved column removes. It also cannot collide with the title any more: they
+   are in different columns, and the title column is `minmax(0, 1fr)`, i.e. allowed to shrink to nothing
+   rather than push its neighbour.
+
+   A REAL 2.5rem BOX, grown to `--rg-tap-min` by the `.rg-tap` rule at the top of this file on touch —
+   no pseudo-element hit area. It has a neighbour (the shell's hamburger, at the opposite end) and the
+   file's own rule against out-of-flow hit boxes applies with full force here.
+
+   The fixed element the consuming shell samples for the iOS status-bar tint is the BAR, not this: the
+   button is an ordinary in-flow child of the slot, carries no `position`, and therefore cannot become a
+   tint source no matter what background it is given.
+   ------------------------------------------------------------------------------------------------ */
+
+.rg-topbar-actions {
+    grid-column: 3;
+    justify-self: end;
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2.5rem;
+    block-size: 2.5rem;
+    padding: 0;
+    border: 0;
+    border-radius: .5rem;
+    /* The bar is glass in the consuming shell — a filled button would punch a card out of it. The look
+       is borrowed from the title beside it (same token, same dark-theme recession below) so the two read
+       as one row rather than as a header with a widget bolted on. */
+    background: transparent;
+    color: var(--rg-fg);
+    cursor: pointer;
+}
+
+.rg-topbar-actions:hover {
+    background: var(--rg-hover);
+}
+
+.rg-topbar-actions:focus-visible {
+    outline: 2px solid var(--rg-accent);
+    outline-offset: -2px;
+}
+
+:root.dark .rg-topbar-actions,
+.dark .rg-topbar-actions {
+    color: color-mix(in srgb, var(--rg-fg) 70%, transparent);
+}
+
+/* NEVER ABOVE THE HOST SHELL'S MOBILE BREAKPOINT, whatever the page holds — the other half of the M1
+   gate, and it lives HERE rather than beside that gate because it is a bare `.rg-topbar-actions`: level
+   with the `display: inline-flex` above, so only source order can decide between them.
+
+   The rule itself used to be left to the host — its bar is `display: none` from 992px up, so this button
+   could not be seen either way — and that is no longer good enough. The box it opens is
+   `display: contents` above 992px (M1), so a host that DID render a bar at desktop width would get a
+   control that toggles a popover which generates no box: a button that visibly does nothing, the one
+   state this file refuses everywhere else. The invariant is now stated where it is created instead of
+   being inherited from a host's layout. */
+@media (min-width: 992px) {
+    .rg-topbar-actions {
+        display: none;
+    }
+}
+
+
+/* ------------------------------------------------------------------------------------------------
+   U3 — the bar's full-text panel.
+
+   Both lines in the bar are clipped to one line. This is where the whole title and the whole
+   description are readable: a sheet that opens DOWNWARDS from under the bar when the user taps the
+   truncated title.
+
+   A NATIVE POPOVER, like the actions menu, and for the same three reasons: it paints in the top layer
+   so nothing in the page can be stacked over it, it light-dismisses on a tap outside, and Escape is
+   free. Its node lives INSIDE the topbar slot, which is what makes the projector its whole lifecycle —
+   the one `replaceChildren` that writes the bar writes this, and the emptying that clears a stale title
+   on a page with no shell clears this with it. Nothing has to remember to tear it down.
+
+   *** SAFARI 26 STATUS-BAR TINT — WHY THIS FIXED BOX IS SAFE ***
+   The host samples fixed elements within ~4px of the viewport top that span ≳80% of its width. This box
+   is `position: fixed` (it must be — an open popover's containing block is the viewport, so `absolute`
+   would mean nothing there), but its block start is the BAR'S HEIGHT plus the top safe-area inset, i.e.
+   ~56px below the sampling band at the very closest. Closed, it is `display: none` by UA rule, which is
+   the one hidden state that platform genuinely ignores. Neither state can tint anything.
+
+   `pointer-events: auto` is not decoration: the slot sets `pointer-events: none` on itself and re-enables
+   it on `a`/`button` only, and this panel is a `div`. Without it the panel would be scroll- and
+   selection-dead while visibly on top of the page. Being in the top layer changes PAINT order, not
+   inheritance.
+   ------------------------------------------------------------------------------------------------ */
+
+.rg-topbar-detail:popover-open {
+    display: block;
+    position: fixed;
+    /* Fallback geometry, stated first and unconditionally so a UA with no anchor positioning still gets
+       the panel under the bar rather than in the viewport's top-left corner. `--rg-topbar-h` is the same
+       host-owned token the actions dropdown reads; the shell's current bar is 3.5rem. */
+    inset-block-start: calc(var(--rg-topbar-h, 3.5rem) + env(safe-area-inset-top) + .25rem);
+    inset-block-end: auto;
+    /* Both inline insets + `inline-size: auto` = a stretched box. The explicit `auto` is REQUIRED: the UA
+       stylesheet gives `[popover]` `width: fit-content`, which over-constrains the box and lets CSS drop
+       one of the two insets — the same trap documented on the actions panel above. */
+    inset-inline-start: calc(.75rem + env(safe-area-inset-left));
+    inset-inline-end: calc(.75rem + env(safe-area-inset-right));
+    inline-size: auto;
+    max-inline-size: none;
+    /* A pathological description scrolls inside the panel instead of running off the screen. */
+    max-block-size: calc(100dvh - var(--rg-topbar-h, 3.5rem) - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 2rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    margin: 0;
+    padding: .625rem .75rem;
+    border: 1px solid var(--rg-border);
+    border-radius: .75rem;
+    background: var(--rg-surface);
+    color: var(--rg-fg);
+    box-shadow: 0 10px 30px rgb(0 0 0 / .22);
+    pointer-events: auto;
+}
+
+/* The bar itself is the anchor, not the title text.
+   ANCHOR IDENTITY: `anchor-name` is document-scoped and resolves to the LAST element in tree order
+   carrying the name, so a name may only be claimed by a node that is unique in the document. The slot is
+   exactly that — `RaptorPageChromeOutlet` owns its id and a document has one bar — whereas the title
+   trigger is written by script and may not exist at all (it only appears when the text is clipped), which
+   would leave the panel unanchored on precisely the pages that do not need it. The slot is also an
+   ANCESTOR of the panel, and an ancestor always precedes its descendant in tree order, so this is a valid
+   anchor without any ordering constraint on the payload's markup.
+   Anchoring to the slot rather than to the text is also what makes the panel meet the bar's bottom EDGE:
+   `align-self: stretch` on the slot (see above) makes its box the bar's content box, so `anchor(bottom)`
+   is the bar's bottom, not the bottom of a 19px line of text floating in the middle of it. */
+@supports (anchor-name: --a) {
+    .rg-topbar-slot {
+        anchor-name: --rg-topbar-slot-anchor;
+    }
+
+    .rg-topbar-detail:popover-open {
+        position-anchor: --rg-topbar-slot-anchor;
+        inset-block-start: calc(anchor(bottom) + .25rem);
+    }
+}
+
+/* The panel's own two lines. NOT headings: a second `h1`/`h2` here would break the "exactly one heading
+   at every width" guarantee the moment the panel opened, which is why the payload names the panel with
+   `aria-labelledby` pointing at the first of these instead. */
+.rg-topbar-detail-title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--rg-fg);
+}
+
+.rg-topbar-detail-desc {
+    margin-block-start: .25rem;
+    margin-block-end: 0;
+    margin-inline: 0;
+    font-size: .8125rem;
+    font-weight: 400;
+    line-height: 1.4;
+    color: color-mix(in srgb, var(--rg-fg) 70%, transparent);
+}
+
+/* Deliberately UNPAINTED. This panel is a tooltip — it reveals text the bar had to clip, it does not
+   take the user out of the page, and dimming the whole viewport for that reads as a modal and makes a
+   one-word title feel like an interruption. The ::backdrop pseudo still EXISTS (the popover is in the
+   top layer either way), so light-dismiss and Esc keep working; only its paint is dropped. Contrast is
+   carried by the panel's own surface + border + shadow above, which is what separates it from the page.
+   If a future panel here ever becomes a decision surface rather than a reveal, dim it then. */
+.rg-topbar-detail::backdrop {
+    background: transparent;
+}
+
+
+/* ------------------------------------------------------------------------------------------------
+   Below the host shell's mobile breakpoint.
+
+   What is hidden is the TITLE BLOCK, never the header. The actions, tools and aside stay on the page:
+   for several pages the header holds the only route to a primary action ("Add Role", "Add User") or
+   the control that selects the data the whole screen shows, and hiding the header would make those
+   unreachable on a phone.
+   ------------------------------------------------------------------------------------------------ */
+
+@media (max-width: 991.98px) {
+
+    /* What remains of the header becomes a single horizontal strip at the top of the page.
+       Unconditional: it must hold whether or not the projection worked. */
+    .rg-pagechrome {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: .5rem;
+        padding-block: .5rem;
+    }
+
+    /* Selects and period filters get their own full row — at 375px they cannot share one. */
+    .rg-pagechrome-tools {
+        flex: 1 1 100%;
+    }
+
+    /* --- The conditional half. -------------------------------------------------------------------
+       Both rules below live under ONE guard: the bar must actually contain a heading before the page
+       is allowed to drop its own. The guard tests for `.rg-topbar-title` — the same node the projector
+       writes and the same node the host's logo rule keys on — so the bar's title, the in-page title
+       and the host's logo can never disagree about which one is showing.
+
+       `.rg-pagechrome-noproject` is the second, independent protection: a shell told not to project
+       prints that class, and neither rule can match it even if some other page on the document did put
+       a title in the bar. The class is genuinely emitted by the component; a guard that only existed in
+       CSS would be no guard at all. */
+    body:has(#rg-topbar-slot .rg-topbar-title) {
+
+        .rg-pagechrome:not(.rg-pagechrome-noproject) > .rg-pagechrome-titleblock {
+            display: none;
+        }
+
+        /* A header whose only child is the (now hidden) title block occupies no space. This rule is
+           under the SAME guard on purpose: when projection has failed, the title block is the header's
+           only child, and an unconditional version would then delete the heading by a second route —
+           the exact silent-zero-heading failure the guard exists to prevent. */
+        .rg-pagechrome:not(.rg-pagechrome-noproject):not(:has(> :not(.rg-pagechrome-titleblock))) {
+            display: none;
+        }
+    }
+
+    /* --- M1 — THE CONTROLS HAVE MOVED INTO THE BAR'S MENU. ---------------------------------------
+       Same shape as the block above, and for the same reason: the page only gives something up once
+       the bar provably holds the replacement. TWO conditions, both on `body` because no single
+       ancestor contains both the bar and the page:
+
+         :has(#rg-topbar-slot .rg-topbar-title)    the bar belongs to THIS page (the heading guard)
+         :has(#rg-topbar-slot .rg-topbar-actions)  the bar really carries a trigger — the exact
+                                                   symmetry of the heading guard, so "no trigger
+                                                   anywhere" is as unreachable as "no heading anywhere"
+
+       THE THIRD CONDITION IS GONE. It used to be K1 restated — `:has(… .rg-pagechrome-inline > * + *)`,
+       "two or more actions" — and it is precisely what made a phone keep an in-page strip for a single
+       button while the bar sat empty. Below 992px the count no longer decides anything.
+
+       There is deliberately NO "and the box holds something" condition either. When it is empty the
+       trigger is hidden by the M1 gate earlier in this file, so the menu cannot be opened, and
+       collapsing an empty strip is what the page wants anyway. Adding the test would only make these
+       rules disagree with that gate about what "empty" means.
+
+       Fail either condition and every rule below stops matching, leaving the pre-M1 layout: tools and
+       actions render in the header strip under the title, which is cramped but complete. Note the
+       second condition tests for the trigger's PRESENCE, not its visibility — presence is what the
+       payload guarantees.
+
+       Above 992px none of this applies: the bar does not exist, the wrapper stays `display: contents`
+       and the header keeps its row, its own "…" and K1. */
+    body:has(#rg-topbar-slot .rg-topbar-title):has(#rg-topbar-slot .rg-topbar-actions) .rg-pagechrome:not(.rg-pagechrome-noproject) {
+
+        /* THE STRIP IS GONE FROM THE PAGE — this is the whole point of M1, and it is done by making the
+           wrapper a real popover: closed, the UA's own `display: none` applies to it and takes the tools
+           box, the primary action and the actions panel out of the flow with it. Restated explicitly
+           rather than left to `revert`, so the state does not depend on how a UA spells its own
+           `[popover]` rules.
+
+           WHY HIDING THE WRAPPER IS SAFE WHILE HIDING THE STRIP WAS NOT. A `display: none` ANCESTOR
+           generates no box, and an element with no box is not rendered at all — top layer or not — so a
+           panel inside a hidden ancestor opens into nothing. That trap is why the old rule used
+           `display: contents` on the strip. It does not apply here because the hidden element IS the
+           popover: when it opens the rule below replaces this one, and everything inside is inside the
+           thing that became visible. Its own ancestor, `.rg-pagechrome`, is `display: contents` (last
+           rule in this block) and never `none`, for exactly the old reason. */
+        > .rg-pagechrome-menu:not(:popover-open) {
+            display: none;
+        }
+
+        /* …and it is a menu when open. An anchored dropdown under the bar's "…", NOT a bottom sheet —
+           the panel geometry and the argument for it are the ones recorded in the "Where the menu opens"
+           section above; this is the same look for the same reason, applied to the box that now holds
+           everything. Painted like `.rg-pagechrome-inline:popover-open` on purpose: it IS that menu, with
+           more in it, and two overflow menus that looked different would read as two different features.
+
+           The insets are stated twice — plain lengths first, `anchor()` in the `@supports` block below —
+           for the support reason documented in that same section, and the fallbacks put the panel exactly
+           where the anchored branch would put it (right-aligned, just under the bar). */
+        > .rg-pagechrome-menu:popover-open {
+            display: flex;
+            flex-direction: column;
+            gap: .1rem;
+            position: fixed;
+            inset-block-start: calc(var(--rg-topbar-h, 3.5rem) + env(safe-area-inset-top));
+            inset-block-end: auto;
+            /* REQUIRED, not tidying-up: the UA gives `[popover]` `inset: 0` with `width: fit-content`,
+               and leaving the start inset at 0 over-constrains the box so CSS drops the END inset and
+               the panel renders hard against the leading edge. Same trap as the actions panel above. */
+            inset-inline-start: auto;
+            /* Plus the scroll-lock gutter, for the reason `.rg-topbar-slot` states in full: this inset
+               is measured from the VIEWPORT's trailing edge and a lock moves that edge. The anchored
+               branch below deliberately omits it — it follows the bar's own "…", which the slot rule
+               keeps still. */
+            inset-inline-end: calc(.5rem + var(--rg-scroll-gutter, 0px));
+            /* Wider floor than the actions menu's 12rem: this panel can hold a period select or a scope
+               input, which are unusable at menu-row width. The ceiling still keeps it off both edges. */
+            min-inline-size: 14rem;
+            max-inline-size: calc(100vw - 1rem);
+            max-block-size: calc(100dvh - var(--rg-topbar-h, 3.5rem) - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 1rem);
+            margin: 0;
+            margin-block-start: .35rem;
+            padding: .3rem;
+            border: 1px solid var(--rg-border);
+            border-radius: .5rem;
+            background: var(--rg-surface);
+            color: var(--rg-fg);
+            box-shadow: 0 8px 28px rgb(0 0 0 / .18);
+            overflow-y: auto;
+            overscroll-behavior: contain;
+        }
+
+        @supports (anchor-name: --a) {
+
+            /* The bar's button, which the guard above has already proved is in the document. It is the
+               only anchor this panel can have: it is the only trigger that opens it. */
+            > .rg-pagechrome-menu:popover-open {
+                position-anchor: --rg-topbar-anchor;
+                inset-block-start: anchor(bottom, calc(var(--rg-topbar-h, 3.5rem) + env(safe-area-inset-top)));
+                inset-inline-end: anchor(right, .5rem);
+            }
+        }
+
+        /* The in-page "…" would now be a second button for a list the bar already opens, and one of them
+           would be inside the other's panel. It goes — unconditionally, at any count, which is K1 being
+           switched off down here rather than re-tuned. The panel and the actions inside it do not move. */
+        .rg-pagechrome-more {
+            display: none;
+        }
+
+        /* The actions panel STOPS BEING A PANEL and becomes a plain run of rows inside the menu.
+           `display: contents` and not `display: none` for the usual reason inverted: its children must
+           keep generating boxes, they are the actions. This is what puts the collapsible actions in the
+           same column as the tools and the primary action instead of behind a second popover, and it is
+           why the count stops mattering at all below 992px. Its `role="group"` and its name survive —
+           `contents` removes a box, not a role — so a screen reader still hears where the tools end and
+           the actions begin. */
+        > .rg-pagechrome-menu:popover-open .rg-pagechrome-inline {
+            display: contents;
+        }
+
+        /* The two halves become columns. Overrides three inherited layouts at once: the host's
+           `.page-header__tools` (`justify-content: space-between; flex-wrap: wrap`), this file's own
+           `.rg-pagechrome-actions` row, and — the one that would actually break — the mobile
+           `.rg-pagechrome-tools { flex: 1 1 100% }` a few rules up: in a COLUMN flex container a
+           `flex-basis: 100%` is a BLOCK size, so the tools box would claim the panel's whole height. */
+        > .rg-pagechrome-menu:popover-open > .rg-pagechrome-tools,
+        > .rg-pagechrome-menu:popover-open > .rg-pagechrome-actions {
+            display: flex;
+            flex-direction: column;
+            flex-wrap: nowrap;
+            align-items: stretch;
+            justify-content: flex-start;
+            flex: 0 0 auto;
+            inline-size: 100%;
+        }
+
+        /* Tools breathe a little more than menu rows do: these are selects and forms, not list items. */
+        > .rg-pagechrome-menu:popover-open > .rg-pagechrome-tools {
+            gap: .25rem;
+        }
+
+        > .rg-pagechrome-menu:popover-open > .rg-pagechrome-actions {
+            gap: .1rem;
+        }
+
+        /* THE TOOLS/ACTIONS SEPARATION, VISIBLE HALF.
+           A rule between the two boxes — drawn by the boxes that already exist, so no node is added and
+           the separator cannot appear on a menu that has only one of the two (`+` needs both). ORDER IS
+           THE SECOND HALF OF THE ANSWER, and it is free: tools come first because that is the DOM order
+           the desktop row already reads in, so the menu and the header cannot disagree about which
+           control is where, and no node has to be re-ordered to get it. It also reads correctly —
+           what SELECTS the data above what ACTS on it. */
+        > .rg-pagechrome-menu:popover-open > .rg-pagechrome-tools + .rg-pagechrome-actions {
+            margin-block-start: .25rem;
+            padding-block-start: .25rem;
+            border-block-start: 1px solid var(--rg-border);
+        }
+
+        /* Rows. Full width and finger-sized, whatever the author put in the slots.
+           `min-block-size` is applied without the touch query, unlike the desktop menu's: this panel only
+           exists below 992px and only opens from a bar the host renders for phones, so the viewport half
+           of that query is already true wherever this can match. */
+        > .rg-pagechrome-menu:popover-open > .rg-pagechrome-tools > *,
+        > .rg-pagechrome-menu:popover-open > .rg-pagechrome-actions > :not(.rg-pagechrome-more):not(.rg-pagechrome-inline),
+        > .rg-pagechrome-menu:popover-open .rg-pagechrome-inline > * {
+            inline-size: 100%;
+            min-block-size: var(--rg-tap-min);
+        }
+
+        /* …and the ACTIONS half is a menu LIST, so its rows read from the leading edge like one.
+           The tools half is deliberately NOT in this selector. Those are the author's own controls — a
+           period form, a scope input, an icon-only PDF button — and the shell owes them the row's WIDTH,
+           not a new internal alignment: `justify-content: flex-start` on an icon-only button drags its
+           glyph to the far end of a 13rem row and leaves the rest of the button empty, which is what it
+           did on the Sales dashboard. Each keeps whatever alignment its own component asked for; the rule
+           between the two halves is what says they are different things, so the difference in alignment
+           reads as structure rather than as an accident. */
+        > .rg-pagechrome-menu:popover-open > .rg-pagechrome-actions > :not(.rg-pagechrome-more):not(.rg-pagechrome-inline),
+        > .rg-pagechrome-menu:popover-open .rg-pagechrome-inline > * {
+            justify-content: flex-start;
+            text-align: start;
+        }
+
+        /* Only the COLLAPSIBLE actions are flattened to borderless rows — the same treatment they get in
+           the desktop menu, restated because K1's own selector keys on the panel holding two or more and
+           down here it may hold one. The primary action is deliberately NOT in this list: it keeps its
+           own paint, so the page's create verb still reads as the emphasised row of the menu instead of
+           being indistinguishable from an export link. Tools keep their paint for the plainer reason that
+           a select stripped of its border is not a select any more. */
+        > .rg-pagechrome-menu:popover-open .rg-pagechrome-inline > * {
+            border-color: transparent;
+            background: transparent;
+            border-radius: .375rem;
+            /* …and the INK with them, for a RaptorPageAction that asked for an emphasis. The three
+               declarations above erase the fill; without this the white-on-fill ink would survive onto a
+               transparent row and the label would disappear into the panel. `initial` is the
+               guaranteed-invalid value for a custom property, so `.rg-pageaction`'s `var()`s fall through
+               to their neutral fallbacks — one reset, no restatement of the neutral paint.
+               STATED HERE AND NOT LEFT TO THE DESKTOP RULE: that one keys on the panel holding two or
+               more (`:has(> * + *)`), and down here the panel routinely holds exactly one — the whole
+               point of M1 is that a lone action goes into the bar's menu too. Same reason the three
+               declarations above are restated rather than inherited from K1.
+               The PRIMARY ACTION is deliberately still outside this selector, exactly as the note above
+               says: it keeps its own paint in the menu, which is what makes an emphasised action written
+               in `PrimaryAction` and one written in `Actions` rank differently on purpose. */
+            --rg-pageaction-fill: initial;
+            --rg-pageaction-ink: initial;
+        }
+
+        /* …and the header itself, when the strip was all it had left.
+           `display: contents`, NEVER `display: none`: the menu is a descendant of this element, and a
+           `display: none` ancestor generates no box, so the popover would open into nothing no matter
+           what the rules above say. `contents` erases the header's own box — the padding and the empty
+           row the user reported — while every child keeps generating boxes exactly as before.
+           Restricted to a header whose only children are the title block (hidden by the guard above) and
+           the control box: a header that also carries an ASIDE keeps its box, because the aside is
+           neither an action nor a tool and never enters the menu. */
+        &:not(:has(> :not(.rg-pagechrome-titleblock):not(.rg-pagechrome-menu))) {
+            display: contents;
+        }
+    }
+}

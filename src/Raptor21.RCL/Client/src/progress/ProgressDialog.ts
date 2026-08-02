@@ -6,9 +6,12 @@
  * client state, produced frame by frame by a stream the client is consuming, so there is no partial to
  * fetch.
  *
- * The element is a genuine `.rg-modal` carrying `data-rg-component="modal"`, so the registry mounts
- * ModalComponent on it and the focus trap, scroll lock, inert-below, Escape, backdrop and modal stack all
- * come from that one implementation. This file owns the body and the loop, and nothing else.
+ * The element is a genuine `.rg-modal` carrying `data-rg-component="modal"` — a native `<dialog>`, like
+ * every other one — so the registry mounts ModalComponent on it and the focus trap, scroll lock, Escape,
+ * backdrop and dialog stack all come from that one implementation. MODALITY ITSELF COMES FROM THE UA:
+ * `showModal()` makes every non-descendant inert, top layer included, which is what the hand-written
+ * "inert-below" pass this comment used to name did less well. That pass no longer exists anywhere in the
+ * library. This file owns the body and the loop, and nothing else.
  *
  * Two conditions the code is written around:
  *
@@ -24,6 +27,7 @@
 
 import {instanceOf} from '../core/registry'
 import {modalContainer} from '../modal/container'
+import {openModal} from '../modal/open'
 import type {ModalComponent} from '../modal/ModalComponent'
 import type {
     RaptorProgressFrame,
@@ -70,7 +74,9 @@ let titleSeq = 0
  * Escape, the backdrop or the × button while it continues in the background.
  */
 function build(title: string | undefined, preparing: string): Parts {
-    const root = document.createElement('div')
+    // A native `<dialog>`, exactly as `<RaptorModal>` renders — see modal/open.ts. Opened by the caller
+    // below, since the component that would otherwise do it is in a lazily-imported chunk.
+    const root = document.createElement('dialog')
     root.className = 'rg-modal'
     root.setAttribute('data-rg-component', 'modal')
 
@@ -169,9 +175,10 @@ function close(root: HTMLElement): void {
 /**
  * Starts the browser's download for a URL.
  *
- * The anchor is appended inside the dialog rather than to `<body>`. While a modal is open, every body
- * child that does not contain the top of the stack carries `inert`, and an element in an inert subtree
- * cannot be clicked. The open dialog is never inert, so the anchor is reachable there.
+ * The anchor is appended inside the dialog rather than to `<body>`. `showModal()` makes everything that
+ * is not a descendant of the dialog inert, and an element in an inert subtree cannot be clicked. The
+ * open dialog is never inert, so the anchor is reachable there. (The reasoning predates the `<dialog>`
+ * conversion — it used to be the hand-written `inert` pass — and the conclusion is unchanged.)
  */
 function triggerDownload(root: HTMLElement, url: string): void {
     const anchor = document.createElement('a')
@@ -194,6 +201,7 @@ export async function run(options: RaptorProgressOptions): Promise<RaptorProgres
     const text: RaptorProgressText = {...DEFAULT_TEXT, ...options.text}
     const parts = build(options.title, text.preparing)
     modalContainer().appendChild(parts.root)
+    openModal(parts.root)
 
     const format = (value: number): string => value.toLocaleString()
 

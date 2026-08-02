@@ -1,0 +1,790 @@
+@namespace Raptor21.RCL.Layout
+@using System.Globalization
+@using Microsoft.AspNetCore.Components.Rendering
+@using Microsoft.AspNetCore.Components.Sections
+@using Raptor21.RCL.Localization
+@inject IRaptorLocalizer L
+
+@* =================================================================================================
+   The page's heading row: a title, an optional description, and the slots a page hangs its controls
+   in. Two things make it worth a component rather than a snippet each page copies.
+
+   ONE NODE PER PIECE OF UI. Nothing here is rendered twice. The mobile bar does not get a COPY of
+   the page's action buttons — it gets a title and a back link built from `Title`/`BackHref`, which
+   are DATA, not the author's markup. Duplicating an author node breaks every contract attached to
+   it (`id`, `hx-swap-oob` targets, `data-rg-export*` delegation), and the duplicate is the one that
+   goes stale.
+
+   THE COMPONENT NEVER TOUCHES THE DOCUMENT TITLE. `<PageTitle>` stays the page's own: at least four
+   pages in the consuming app need a document title that is not derivable from the visible heading,
+   so a `DocumentTitle` parameter here would be a second, competing owner of the same string.
+
+   NO `IHttpContextAccessor`, NO "am I boosted?" branch. Both projections below are emitted
+   unconditionally; which one lands is decided on the client by one idempotent projector
+   (`Client/src/runtime/page-chrome.ts`). A component that asked whether the request was boosted
+   would impose `AddHttpContextAccessor()` on every consumer and still be wrong on the history
+   cache-hit path, where no request happens at all.
+   ================================================================================================= *@
+
+@* `data-rg-page-chrome` and NOT `data-rg-component="page-chrome"`: the latter is the client
+   registry's own attribute, and the registry warns to the console for every element carrying a name
+   it has no component for. This shell has no registered component by design — its behaviour is
+   document-level (`runtime/page-chrome.ts`) precisely so it works before any chunk resolves — so the
+   registry attribute would log a warning on every page of the app and mean nothing. *@
+@if (TopbarOnly)
+{
+    @* TITLE-ONLY MODE — the page gets NO header row; the bar gets its title.
+
+       One element, no slots, no `page-header` classes (see HeaderCssClass), and a heading that is
+       visually hidden rather than absent so the document is never nameless at a width where the host's
+       mobile bar does not exist. The whole argument is on the `TopbarOnly` parameter.
+
+       The projection below is emitted exactly as it is for a normal page: this mode changes what the
+       PAGE renders, never what the BAR receives, so the payload, its key and the projector's
+       stale-title emptying (E8) are the same code on the same data. *@
+    <div class="@HeaderCssClass"
+         data-rg-page-chrome="@_instanceId"
+         @attributes="AdditionalAttributes">
+        @((RenderFragment)BuildHeading)
+    </div>
+}
+else
+{
+    <div class="@HeaderCssClass"
+         data-rg-page-chrome="@_instanceId"
+         @attributes="AdditionalAttributes">
+
+        @* The ONLY node the mobile rules hide, and only when the bar provably shows a title instead.
+           The hiding class sits on THIS node rather than on `.page-header--split`: that class is a
+           layout contract about a header ROW, so anything else that ever prints it — a host, a page the
+           library does not render — would have its heading blanked by a rule that knows nothing about
+           whether the bar is carrying a replacement. *@
+        <div class="rg-pagechrome-titleblock">
+            @((RenderFragment)BuildHeading)
+            @if (DescriptionContent is not null || !string.IsNullOrWhiteSpace(Description))
+            {
+                <p class="page-header__subtitle">
+                    @if (DescriptionContent is not null)
+                    {
+                        @DescriptionContent
+                    }
+                    else
+                    {
+                        @Description
+                    }
+                </p>
+            }
+        </div>
+
+        @if (Aside is not null)
+        {
+            <div class="rg-pagechrome-aside">@Aside</div>
+        }
+
+        @if (HasControls)
+        {
+            @* THE CONTROL BOX — ONE WRAPPER AROUND *BOTH* CONTROL SLOTS, AND IT IS A POPOVER.
+               (M1. Read this with the `.rg-pagechrome-menu` section of `_page-chrome.scss`.)
+
+               It exists because the two surfaces want two different containers for the SAME nodes:
+
+                 >=992px  a header ROW — [tools][actions] packed at the end, exactly as before.
+                 <=991.98px  a MENU — every control behind the one "…" in the persistent bar, so the
+                          page body starts at the top of the viewport instead of under two stacked
+                          rows of buttons (Orders: "Filters" on its own full-width row, "Export Excel"
+                          under it, and nothing in the bar).
+
+               NOTHING MOVES BETWEEN THEM. The wrapper is `display: contents` at every width except the
+               one case where it is an OPEN popover, so on desktop it generates no box at all and the
+               tools/actions boxes stay direct flex items of the header — same row, same order, same
+               pixels. On a phone the same element becomes the menu's panel, in place, with every
+               author node still exactly where it was rendered: `id`s, `hx-*`, `hx-swap-oob` targets and
+               `data-rg-export*` delegation all address the one and only copy, which is the whole
+               reason the bar gets a `popovertarget` BUTTON and never a copy of the controls.
+
+               WHY THE WRAPPER AND NOT THE EXISTING ACTIONS PANEL. `.rg-pagechrome-inline` (below) is
+               INSIDE the actions box and is the desktop overflow menu — it can never contain the tools
+               box, which is its parent's sibling, without the shell re-parenting an author node. Two
+               nested popovers instead: the outer one is the phone's whole menu, the inner one stays
+               the desktop's overflow menu, and each is a real popover in exactly the range where the
+               other one is `display: contents`. Neither is ever open at a width where the other is.
+
+               NO `role`, NO `aria-label` HERE. A role on a `display: contents` element is still exposed,
+               so a desktop screen reader would find a group wrapping the period selects and announce
+               them as the page's actions. The distinction the user asked for is carried by nodes that
+               already exist and that are real in both surfaces: the inner panel keeps its
+               `role="group"` + name, so inside the open menu the collapsible actions announce as a
+               named group and the tools sit outside it — plus the visible rule the stylesheet draws
+               between the two boxes. `tabindex="-1"` stays: it is the last-resort focus target for
+               `runtime/page-chrome.ts` when the panel holds nothing focusable. *@
+            <div class="rg-pagechrome-menu" id="@_menuId" popover="auto" tabindex="-1">
+
+                @if (Tools is not null)
+                {
+                    @* `.page-header__tools` is a HARD constraint, not decoration: the consuming app's Sales PDF
+                       export clones the page and strips the toolbar by exactly this selector. *@
+                    <div class="page-header__tools rg-pagechrome-tools">@Tools</div>
+                }
+
+                @if (PrimaryAction is not null || Actions is not null)
+                {
+                    <div class="@ActionsCssClass">
+                        @PrimaryAction
+                        @if (Actions is not null)
+                        {
+                            @* DOM ORDER IS LOAD-BEARING: trigger FIRST, panel SECOND.
+                               (1) Sequential focus then works by plain tree order — Tab moves from the
+                                   trigger into the panel and Shift+Tab back out — with no dependency on a
+                                   UA having implemented popover focus navigation.
+                               (2) CSS anchor positioning requires the anchor to precede the positioned
+                                   element, so the `@@supports` block in _page-chrome.scss is
+                                   unconditionally valid.
+
+                               A native `popover` and not `RaptorDropdown`: the dropdown portals its panel to
+                               <body> on mount, after which the `:has()` element count below would be measuring
+                               an empty root. A popover's node stays exactly where it is; only its PAINT moves to
+                               the top layer, so the count reads the same open or closed.
+
+                               THIS TRIGGER IS DESKTOP-ONLY IN EFFECT. Below 992px the stylesheet hides it and
+                               the panel it opens is flattened to `display: contents` inside the outer menu, so
+                               a phone has exactly ONE "…" — the bar's — and never two buttons for one list. *@
+                            <button type="button" class="rg-pagechrome-more rg-tap"
+                                    popovertarget="@_actionsId"
+                                    aria-controls="@_actionsId"
+                                    aria-expanded="false"
+                                    aria-label="@ActionsAccessibleName">
+                                @* HORIZONTAL ellipsis. The dots run along the INLINE axis (cy fixed at the
+                                   viewBox's vertical centre, cx stepped) because the panel this opens is a
+                                   dropdown hanging BELOW the trigger: a vertical "⋮" reads as "more rows
+                                   further down the list", a horizontal "…" as "more of this row", which is
+                                   what an overflow menu is. Same 24-unit viewBox and same r=2 as before, so
+                                   the button's box, the 18px render size and the host's round-FAB styling are
+                                   untouched — only the coordinates swapped. *@
+                                <svg class="rg-actions-ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                                    <circle cx="5" cy="12" r="2" fill="currentColor"/>
+                                    <circle cx="12" cy="12" r="2" fill="currentColor"/>
+                                    <circle cx="19" cy="12" r="2" fill="currentColor"/>
+                                </svg>
+                            </button>
+                            @* ONE wrapper, no per-child wrapper: `hx-swap-oob` responses address action nodes by
+                               id and would miss a node the shell had re-parented into a private box.
+                               `role="group"` rather than `role="menu"`: `menu` REQUIRES its children to be
+                               `menuitem`s, which the shell cannot impose on a transparent slot, and a screen
+                               reader miscounts the items when they are not. `group` demands nothing of its
+                               children and is what makes the `aria-label` reliably exposed.
+                               `tabindex="-1"`: the panel is the last-resort focus target when it holds nothing
+                               focusable; it never enters the sequential tab order.
+                               THE GROUP SURVIVES THE FLATTENING: below 992px this element is `display: contents`
+                               inside the open bar menu, which removes its BOX and not its role, so the
+                               collapsible actions stay a named group in the accessibility tree while the tools
+                               sit outside it — the audible half of the tools/actions separation the stylesheet
+                               draws as a rule. *@
+                            <div class="rg-pagechrome-inline" id="@_actionsId" popover="auto"
+                                 role="group" tabindex="-1"
+                                 aria-label="@ActionsAccessibleName">@Actions</div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
+
+@if (ProjectToTopbar)
+{
+    @* TWO emissions of the same DATA, unconditionally.
+
+       (1) Full document load: the section outlet inside the host's persistent mobile bar
+           (`RaptorPageChromeOutlet`) is filled by the server. No JS involved, nothing moves after
+           first paint.
+       (2) Boosted swap, history restore (cache hit AND cache miss), bfcache resurrection: an inert
+           <template> INSIDE `#app-root`. Being ordinary live DOM of the history element, it rides
+           along in htmx's `hx-history-elt` snapshot — an `hx-swap-oob` node would not, because htmx
+           lifts OOB nodes out of the response before the region is swapped, so they never exist in
+           the snapshotted subtree and a cache-hit Back would restore the PREVIOUS page's bar.
+
+       The template is also the invalidation signal: a page that emits none leaves the projector
+       with nothing to project, and it empties the bar. That is what stops a stale title surviving a
+       navigation to a page that does not use this component. *@
+    <SectionContent SectionName="@TopbarSectionName">@TopbarPayload()</SectionContent>
+    <template id="@TopbarPayloadElementId">@TopbarPayload()</template>
+}
+
+@code {
+
+    /// <summary>Name of the section this component publishes its mobile-bar payload to.
+    /// <see cref="RaptorPageChromeOutlet"/> renders the matching outlet; the constant is public so the
+    /// pairing is a compile-time reference rather than a string repeated in two files.</summary>
+    public const string TopbarSectionName = "rg-topbar";
+
+    /// <summary>Id of the inert template carrying the mobile-bar payload through boosted swaps and
+    /// history restores. Mirrored by <c>TOPBAR_PAYLOAD</c> in <c>runtime/page-chrome.ts</c>.</summary>
+    public const string TopbarPayloadElementId = "rg-topbar-payload";
+
+    /// <summary>Id of the bar's full-text panel (U3). Constant rather than instance-derived: the panel
+    /// lives inside the one-per-document topbar slot, and a constant is what keeps it out of
+    /// <see cref="PayloadKey"/>. Not mirrored in TypeScript — <c>runtime/page-chrome.ts</c> reads the id
+    /// off the <c>.rg-topbar-detail</c> element it finds, so the string exists in exactly one file.</summary>
+    public const string TopbarDetailElementId = "rg-topbar-detail";
+
+    /// <summary>Id of the paragraph that names the panel above (<c>aria-labelledby</c>). Same
+    /// uniqueness argument as <see cref="TopbarDetailElementId"/>.</summary>
+    public const string TopbarDetailTitleElementId = "rg-topbar-detail-title";
+
+    // ---- Title -----------------------------------------------------------------------------------
+
+    /// <summary>The page heading. The single title API — the same string reaches the in-page heading,
+    /// the mobile bar and the `title` attribute.</summary>
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = "";
+
+    /// <summary>Target of a back affordance shown before the title. Supplied, the shell emits ONE back
+    /// control per surface — one in the in-page heading, one in the mobile bar — both built from this
+    /// value rather than one being a copy of the other.</summary>
+    [Parameter]
+    public string? BackHref { get; set; }
+
+    /// <summary>Accessible name for the back control (it is icon-only, so this is not optional in
+    /// effect). Unset falls back to the library's own <c>PageChrome_Back</c> string.</summary>
+    [Parameter]
+    public string? BackLabel { get; set; }
+
+    /// <summary>Heading level for the title. Defaults to 1: this component renders the page's single
+    /// heading. Set 2 on a page that already has an <c>h1</c> of its own. Appearance does not change
+    /// with it — the styling hangs off <c>.page-header__title</c>, not off the tag.</summary>
+    [Parameter]
+    public int HeadingLevel { get; set; } = 1;
+
+    // ---- Description -----------------------------------------------------------------------------
+
+    /// <summary>Plain-text description under the title.</summary>
+    [Parameter]
+    public string? Description { get; set; }
+
+    /// <summary>Description with markup. Rendered ONCE, in the page's own header only.
+    /// <para>
+    /// The mobile bar carries the PLAIN <see cref="Description"/> string under its title (U2) and never
+    /// this fragment. The distinction is the "one node per piece of UI" rule, not a layout budget: a
+    /// string is DATA the shell can re-render from scratch outside <c>#app-root</c>, whereas this
+    /// fragment is the AUTHOR'S markup and may carry ids, <c>hx-*</c> attributes or delegation contracts
+    /// that must not be duplicated into a container that outlives the page. A page that needs a
+    /// description in the bar supplies <see cref="Description"/>; one that needs markup accepts that the
+    /// bar shows the title alone.
+    /// </para></summary>
+    [Parameter]
+    public RenderFragment? DescriptionContent { get; set; }
+
+    // ---- Slots -----------------------------------------------------------------------------------
+
+    /// <summary>Collapsible actions.
+    /// <para>
+    /// ON DESKTOP (≥992px) the threshold is unchanged: ONE stays inline, TWO OR MORE collapse into the
+    /// header's own "…" menu. It is decided in CSS, not here, because the count is a runtime value —
+    /// permission gates make the same route render one action for one user and two for another, and a
+    /// server-side decision would have to be re-made per user.
+    /// </para>
+    /// <para>
+    /// ON A PHONE (≤991.98px) there is no threshold at all: one action or five, everything here is reached
+    /// through the single "…" in the persistent bar and the in-page strip is not shown. The threshold was
+    /// only ever an answer to "when should the DESKTOP collapse a row of buttons"; on a phone the row is
+    /// the problem, because the page body then starts below it.
+    /// </para></summary>
+    [Parameter]
+    public RenderFragment? Actions { get; set; }
+
+    /// <summary>The one action that never collapses into the DESKTOP menu — the page's create/primary verb.
+    /// A separate slot rather than a derivation from a button's variant: a "success"-coloured export is
+    /// not a primary action, and the two would be indistinguishable.
+    /// <para>
+    /// Below 992px it is a row in the bar's menu like everything else — the in-page strip is hidden there,
+    /// so a primary action left out of the menu would have no surface at all. It is the FIRST row of the
+    /// actions half and keeps its own paint (the stylesheet flattens the collapsible actions around it,
+    /// not this), so the page's verb still reads as the emphasised one.
+    /// </para></summary>
+    [Parameter]
+    public RenderFragment? PrimaryAction { get; set; }
+
+    /// <summary>Persistent controls that must NOT collapse ON DESKTOP: period selectors, scope inputs, the
+    /// header's own forms. Emitted with the <c>page-header__tools</c> class, which is a hard external
+    /// contract — see the note at the render site.
+    /// <para>
+    /// Below 992px they DO enter the bar's menu, above the actions and separated from them by a rule. That
+    /// is the point of the mobile rework rather than an exception to it: a filter bar is exactly what was
+    /// costing a phone a full-width row of its own (`flex: 1 1 100%`) before the page's first pixel.
+    /// </para></summary>
+    [Parameter]
+    public RenderFragment? Tools { get; set; }
+
+    /// <summary>Content that sits in the header's right-hand area but is not an action: breadcrumbs,
+    /// out-of-band status counters. Never enters the actions menu.</summary>
+    [Parameter]
+    public RenderFragment? Aside { get; set; }
+
+    // ---- Behaviour -------------------------------------------------------------------------------
+
+    /// <summary>Project the title into the host's persistent mobile bar. Turn it off for layouts that
+    /// have no such bar (bare, auth, embedded use): the component then emits neither the section content
+    /// nor the template, marks itself <c>rg-pagechrome-noproject</c>, and the mobile rule that would
+    /// otherwise hide the in-page title stops matching. One switch, both halves.</summary>
+    [Parameter]
+    public bool ProjectToTopbar { get; set; } = true;
+
+    /// <summary>
+    /// Render NO in-page header at all — the shell's only job becomes naming the page in the host's
+    /// persistent mobile bar.
+    /// <para>
+    /// THE MODE THIS EXISTS FOR: a page that already owns its header UI and wants nothing added above it,
+    /// but whose mobile bar would otherwise show the host's logo instead of the page's name.
+    /// <c>CustomerDetailPage</c> is the case — it renders its own identity panel (name, status, code, its
+    /// own back control) and had NEVER carried a <c>.page-header</c> row. Passing this component a
+    /// <c>Title</c> gave the bar its title below 992px and, above it, a heading row the page did not have
+    /// before and nobody asked for. The projection was wanted; the row was not. This parameter is the
+    /// difference between the two, which the component previously could not express: it renders the
+    /// heading, the description and every slot unconditionally, and <see cref="ProjectToTopbar"/> is the
+    /// wrong lever — it is the exact INVERSE switch (keep the row, drop the projection).
+    /// </para>
+    /// <para>
+    /// WHY A VISUALLY HIDDEN HEADING AND NOT NOTHING AT ALL. The bar is the host's and is
+    /// <c>display: none</c> from 992px up (it is a mobile bar), so "render nothing" would mean the
+    /// document has no heading from this shell at any desktop width — a page that reads as unnamed to a
+    /// screen reader in exactly the mode whose whole purpose is to name the page. F2 asks for ONE
+    /// complete heading at EVERY width, and this mode keeps it:
+    /// <list type="bullet">
+    /// <item><description>≥992px — the bar does not exist; this heading is in the accessibility tree and
+    /// occupies zero pixels. One heading.</description></item>
+    /// <item><description>&lt;992px with the projection in place — <c>_page-chrome.scss</c> hides this
+    /// heading under the SAME <c>body:has(#rg-topbar-slot .rg-topbar-title)</c> guard that hides a normal
+    /// page's title block, so the bar's <c>h1</c> is the only one. One heading, never two.</description></item>
+    /// <item><description>&lt;992px with the projection broken (no outlet, no bundle) — the guard fails,
+    /// this heading stays. The page looks exactly as it did (nothing was visible either way) and the
+    /// document still has a name. Zero headings is unreachable.</description></item>
+    /// </list>
+    /// </para>
+    /// <para>
+    /// The mode is title-only BY CONTRACT, and the contract is enforced in <c>OnParametersSet</c> rather
+    /// than by silently dropping content: there is no in-page box to render an action, a tool or a markup
+    /// description into, and quietly swallowing a page's "Add …" button is a far worse failure than a
+    /// loud one at development time. <see cref="BackHref"/> IS still honoured — it is data, and it reaches
+    /// the bar's own back control, which is a real surface in this mode.
+    /// </para>
+    /// </summary>
+    [Parameter]
+    public bool TopbarOnly { get; set; }
+
+    /// <summary>Accessible name for the "…" trigger. Unset falls back to <c>PageChrome_Actions</c>.</summary>
+    [Parameter]
+    public string? ActionsLabel { get; set; }
+
+    /// <summary>Extra classes for the header element. Convenience alias of
+    /// <see cref="HeaderClass"/> — both are appended, in that order.</summary>
+    [Parameter]
+    public string? Class { get; set; }
+
+    /// <summary>Extra classes for the header element.</summary>
+    [Parameter]
+    public string? HeaderClass { get; set; }
+
+    /// <summary>Splatted onto the header element.</summary>
+    [Parameter(CaptureUnmatchedValues = true)]
+    public IReadOnlyDictionary<string, object?>? AdditionalAttributes { get; set; }
+
+    // ---- Internals -------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The two combinations <see cref="TopbarOnly"/> cannot mean, refused where they are written rather
+    /// than absorbed at render time.
+    /// <para>
+    /// A component that dropped these silently would delete UI: the slots would simply never be rendered,
+    /// and the page would lose its primary action — or, with <see cref="ProjectToTopbar"/> off, lose its
+    /// heading on every surface at once — with nothing in the markup to point at. Both are authoring
+    /// mistakes with one obvious fix each, so they are stated as such.
+    /// </para>
+    /// </summary>
+    protected override void OnParametersSet()
+    {
+        if (!TopbarOnly) return;
+
+        if (!ProjectToTopbar)
+        {
+            throw new InvalidOperationException(
+                $"{nameof(RaptorPageChrome)}: {nameof(TopbarOnly)} renders no in-page header, so with " +
+                $"{nameof(ProjectToTopbar)} disabled the component renders nothing at all and the page is " +
+                $"left with no heading at any width. Use {nameof(TopbarOnly)} with the projection on, or " +
+                "remove the component.");
+        }
+
+        if (Actions is not null || PrimaryAction is not null || Tools is not null || Aside is not null
+            || DescriptionContent is not null)
+        {
+            throw new InvalidOperationException(
+                $"{nameof(RaptorPageChrome)}: {nameof(TopbarOnly)} renders no in-page header, so " +
+                $"{nameof(Actions)}, {nameof(PrimaryAction)}, {nameof(Tools)}, {nameof(Aside)} and " +
+                $"{nameof(DescriptionContent)} have nowhere to go — the actions menu's own panel lives in " +
+                "the page, so even the bar's trigger would name an element that does not exist. Drop " +
+                $"{nameof(TopbarOnly)} if the page needs a header row; keep {nameof(Title)}, " +
+                $"{nameof(Description)} and {nameof(BackHref)} (all three are data and all three reach the " +
+                "bar) if it does not.");
+        }
+    }
+
+    // Element ids must be unique in the document; the payload key must be STABLE for the same title
+    // across requests (see PayloadKey). Two different jobs, so two different values.
+    private readonly string _instanceId = Guid.NewGuid().ToString("N")[..8];
+
+    private string _actionsId => $"rg-pagechrome-actions-{_instanceId}";
+
+    /// <summary>Id of the outer control box (M1) — the element the BAR's "…" opens. Distinct from
+    /// <see cref="_actionsId"/>, which is the desktop overflow menu nested inside it: the two are popovers
+    /// in disjoint width ranges and the two triggers must not name the same one.</summary>
+    private string _menuId => $"rg-pagechrome-menu-{_instanceId}";
+
+    /// <summary>Whether the page gave the header anything to control with. The condition for emitting the
+    /// outer control box AND for publishing the bar's trigger — one predicate, so a bar button naming a
+    /// box that was never rendered is unreachable by construction rather than by a runtime check.
+    /// <para>
+    /// It is deliberately "a slot was supplied", not "a slot rendered something": what a slot renders is a
+    /// per-user runtime value (permission gates), which the server cannot count. Whether the trigger is
+    /// SHOWN is therefore still CSS's decision — <c>_page-chrome.scss</c> hides it unless the box really
+    /// holds a control — exactly as the action count has always been.
+    /// </para></summary>
+    private bool HasControls => Tools is not null || PrimaryAction is not null || Actions is not null;
+
+    private string BackAccessibleName => BackLabel ?? L["PageChrome_Back"];
+
+    private string ActionsAccessibleName => ActionsLabel ?? L["PageChrome_Actions"];
+
+    /// <summary>
+    /// Classes on the header element.
+    /// <para>
+    /// <c>rg-pagechrome-noproject</c> is emitted whenever <see cref="ProjectToTopbar"/> is off. It is
+    /// not decorative: two stylesheet rules exclude it by name, and without it being printed those
+    /// rules would hide the in-page title on a page that projects nothing, leaving no heading at all
+    /// below 992px.
+    /// </para>
+    /// </summary>
+    /// <para>
+    /// In <see cref="TopbarOnly"/> mode NONE of those classes are printed. The element is not a header
+    /// row — it is a visually hidden heading — so <c>page-header</c> (which carries the host's header
+    /// spacing), <c>page-header--split</c> (a layout contract about a row with children) and
+    /// <c>rg-pagechrome</c> (which every layout rule in <c>_page-chrome.scss</c> keys on) would each be a
+    /// claim that is not true of it. Printing none of them is also what keeps this mode out of the
+    /// header-layout rules entirely: it cannot become a one-child <c>--split</c> row for a layout rule to
+    /// have to special-case.
+    /// </para>
+    private string HeaderCssClass
+    {
+        get
+        {
+            var parts = new List<string>(6);
+            if (TopbarOnly)
+            {
+                parts.Add("rg-pagechrome-sronly");
+            }
+            else
+            {
+                parts.Add("page-header");
+                parts.Add("page-header--split");
+                parts.Add("rg-pagechrome");
+                if (!ProjectToTopbar) parts.Add("rg-pagechrome-noproject");
+            }
+
+            if (!string.IsNullOrWhiteSpace(Class)) parts.Add(Class!.Trim());
+            if (!string.IsNullOrWhiteSpace(HeaderClass)) parts.Add(HeaderClass!.Trim());
+            return string.Join(' ', parts);
+        }
+    }
+
+    /// <summary>
+    /// Classes on the heading element itself, or <c>null</c> for none at all.
+    /// <para>
+    /// <c>page-header__title</c> is the HOST'S typography hook and is printed on every visible heading;
+    /// the library states no font size of its own for it. A <see cref="TopbarOnly"/> heading is never
+    /// painted, so it gets NO class: the host's visible-title class on a hidden node would make it match
+    /// rules written for a heading the user can see, and a library class of its own would be a hook with
+    /// nothing on the other end — the hiding is done by the wrapper (<c>.rg-pagechrome-sronly</c>), which
+    /// is one element and one rule.
+    /// </para>
+    /// </summary>
+    private string? HeadingCssClass => TopbarOnly ? null : "page-header__title";
+
+    /// <summary>
+    /// Classes on the action strip. <c>page-header__actions</c> is kept unconditionally — see the note on
+    /// <c>page-header__tools</c> at the render site.
+    /// <para>
+    /// <c>rg-pagechrome-actions-menuonly</c> IS GONE. It marked a strip whose entire contents were the
+    /// collapsible menu, which used to be the one shape the mobile rules could erase — the strip was the
+    /// unit that collapsed, so a strip carrying a <see cref="PrimaryAction"/> beside the menu had to keep
+    /// its box or the page's create verb would have had no surface on a phone. Below 992px the collapsing
+    /// unit is now <c>.rg-pagechrome-menu</c>, which holds the tools box and the actions box TOGETHER and
+    /// re-appears as the bar's menu panel, so the primary action is not stranded by the collapse — it is a
+    /// row in that panel. Nothing distinguishes the two strip shapes any more, so the class had no reader
+    /// left, and a class no rule reads is a hook with nothing on the other end.
+    /// </para>
+    /// </summary>
+    private const string ActionsCssClass = "page-header__actions rg-pagechrome-actions";
+
+    /// <summary>
+    /// Identity of the bar payload, and the whole of the projector's idempotency test.
+    /// <para>
+    /// Derived from the payload's own data so the server-rendered copy (section outlet, full page load)
+    /// and the client-projected copy (template clone) agree WITHOUT the outlet having to know anything
+    /// about this component — the outlet is rendered by the host's layout and may not even be on the
+    /// page. On a full load the two keys match and the projector does nothing, so first paint is never
+    /// disturbed by JS.
+    /// </para>
+    /// <para>
+    /// FNV-1a rather than <see cref="string.GetHashCode()"/>: that one is randomised per process, and a
+    /// key written by one server instance is compared against a template rendered by another.
+    /// </para>
+    /// <para>
+    /// The control box's element id is part of the key WHENEVER the page has one, because the bar carries a
+    /// button whose <c>popovertarget</c> names that id. Two consecutive pages can share a title (a list and
+    /// its filtered variant) while owning different boxes; without the id in the key the projector would
+    /// call the payloads identical, keep the previous page's button, and leave it pointing at an id that
+    /// left the document with the old page — a visible control that does nothing. A page with no controls
+    /// still keys on its data alone, so the "stable for the same title across requests" property is
+    /// untouched exactly where it was being relied on. It is <see cref="_menuId"/> and not
+    /// <see cref="_actionsId"/> because <see cref="_menuId"/> is what the bar's button names.
+    /// </para>
+    /// <para>
+    /// <see cref="Description"/> is part of the key because it is now part of the payload (U2). Two
+    /// consecutive routes can share a title and differ only in their description — leaving it out would
+    /// make the projector call those payloads identical and leave the previous page's description under
+    /// the new page's title. The full-text panel's element id is NOT in the key: it is a constant (see
+    /// <see cref="TopbarDetailElementId"/>), so it can never go stale the way an instance-derived id can.
+    /// </para>
+    /// </summary>
+    private string PayloadKey => KeyOf(Title, Description, BackHref, BackAccessibleName, HasControls ? _menuId : null);
+
+    private static string KeyOf(params string?[] parts)
+    {
+        unchecked
+        {
+            var hash = 2166136261u;
+            foreach (var part in parts)
+            {
+                foreach (var c in part ?? string.Empty)
+                {
+                    hash ^= c;
+                    hash *= 16777619u;
+                }
+
+                // Separator, so ("ab", "c") and ("a", "bc") do not collide.
+                hash ^= 0x1Fu;
+                hash *= 16777619u;
+            }
+
+            return hash.ToString("x8", CultureInfo.InvariantCulture);
+        }
+    }
+
+    /// <summary>
+    /// The data — and only the data — that reaches the persistent mobile bar.
+    /// <para>
+    /// No author fragment, no action node, nothing carrying an <c>id</c> or an <c>hx-*</c> attribute.
+    /// The bar is outside the swapped region, so anything the page owns that landed here would outlive
+    /// the page it belongs to.
+    /// </para>
+    /// <para>
+    /// The key rides on the <c>.rg-topbar-title</c> element rather than on the slot, because the title
+    /// is the one node that exists on both paths and it is also the node the stylesheet's `:has()`
+    /// guards test for. One node, one truth: if it is in the bar, the bar has a heading and the key is
+    /// readable; if it is absent, the bar has no heading and the key reads empty.
+    /// </para>
+    /// </summary>
+    private RenderFragment TopbarPayload() => @<text>
+        @if (!string.IsNullOrEmpty(BackHref))
+        {
+            <a href="@BackHref" class="rg-topbar-back rg-tap" aria-label="@BackAccessibleName">
+                <span class="rg-ico rg-ico-back" aria-hidden="true"></span>
+            </a>
+        }
+        @* U1/U2 — THE CENTRED TITLE BLOCK.
+           A wrapper, not a bare <h1>, because the bar now carries TWO lines of data: the title and,
+           under it at a smaller size, the plain-text description. The wrapper is what the stylesheet
+           places in the middle column of the slot's three-column grid; the two side columns reserve the
+           SAME width whether or not anything is in them, which is what keeps the title optically centred
+           on a bar whose leading control (the host's hamburger) is `position: fixed` and therefore not a
+           layout participant at all.
+
+           `.rg-topbar-title` STAYS AN <h1> AND KEEPS THE CLASS. Both are contracts, not styling:
+             * F2 — below the host's mobile breakpoint the in-page heading is hidden, so this is the
+               document's ONE h1. A <span role="heading"> or a <button> wrapper here would leave the
+               phone with zero real headings, which is exactly the failure the guards exist to prevent.
+             * `body:has(#rg-topbar-slot .rg-topbar-title)` — the guard in `_page-chrome.scss`, the host's
+               logo/title switch, and `payloadKey()` in `runtime/page-chrome.ts` all read this one node.
+           The heading's TEXT is wrapped in its own span so the truncation, and the trigger the projector
+           may wrap around it (U3), have an element to act on that is not the heading itself.
+
+           The description is a SIBLING of the heading, never a child of it: inside the <h1> it would
+           become part of the heading's accessible name and turn every heading-navigation stop into a
+           sentence. Only `Description` (a string) is emitted — `DescriptionContent` is author markup and
+           stays inside `#app-root`; see the parameter's own note. *@
+        <div class="rg-topbar-titleblock">
+            <h1 class="rg-topbar-title" title="@Title" data-rg-topbar-key="@PayloadKey">
+                <span class="rg-topbar-titletext">@Title</span>
+            </h1>
+            @if (!string.IsNullOrWhiteSpace(Description))
+            {
+                <p class="rg-topbar-desc">@Description</p>
+            }
+        </div>
+
+        @* U3 — THE FULL-TEXT PANEL.
+           Both lines above are single-line-with-ellipsis, so a long title or description is unreadable
+           in the bar. This is the panel that shows them in full, opening downwards from under the bar.
+
+           IT IS PART OF THE PAYLOAD, so it needs no separate lifecycle: the ONE `replaceChildren` that
+           writes the bar writes this too, and the same emptying that clears a stale title on a page with
+           no shell clears this with it. Nothing here is author markup — it is the same two strings the
+           block above renders — so the "no page-owned node outlives its page" rule holds unchanged.
+
+           A CONSTANT id, unlike the actions panel's. The actions panel lives in `#app-root` and there is
+           one per page instance, so its id must be unique per instance; this one lives in the slot, and
+           the slot is unique in the document by construction (`RaptorPageChromeOutlet` owns the id). The
+           copy inside `<template id="rg-topbar-payload">` is NOT a duplicate id: template content is an
+           inert fragment outside the document tree, which is the same reason `dropDanglingTrigger` can
+           trust `getElementById`. A constant also keeps it OUT of `PayloadKey` — an instance-derived id
+           would change on every request and defeat the key's whole purpose.
+
+           NO `<h1>`/`<h2>` inside: a second heading here would break F2 the moment the panel opened.
+           `role="group"` + `aria-labelledby` gives it a name without inventing a heading.
+
+           WHY THE TRIGGER IS NOT RENDERED HERE: whether the text is actually clipped is a measurement,
+           not a fact the server has. `runtime/page-chrome.ts` wraps `.rg-topbar-titletext` in a button
+           only when something really overflows, so a title that fits produces no button, no tab stop and
+           no control that does nothing. See `syncTitleTrigger`. *@
+        <div class="rg-topbar-detail" id="@TopbarDetailElementId" popover="auto"
+             role="group" tabindex="-1" aria-labelledby="@TopbarDetailTitleElementId">
+            <p class="rg-topbar-detail-title" id="@TopbarDetailTitleElementId">@Title</p>
+            @if (!string.IsNullOrWhiteSpace(Description))
+            {
+                <p class="rg-topbar-detail-desc">@Description</p>
+            }
+        </div>
+        @if (HasControls)
+        {
+            @* THE SECOND INVOKER — and the reason nothing else moves.
+               `popovertarget` is resolved against the WHOLE DOCUMENT: an invoker does not have to be a
+               sibling, an ancestor or even a relative of its popover. So the bar gets a TRIGGER while the
+               panel and every action node stay exactly where the page rendered them, inside `#app-root`.
+               `data-rg-export*` document delegation, `hx-*` and `hx-swap-oob` id contracts, and any
+               `id`-bound script in the host keep addressing the one and only copy of each action node —
+               the "one node per piece of UI" rule is not weakened by this button, it is what forced it.
+               This element carries NO `id`, no `hx-*` and no author markup; it is built from the same
+               DATA as the title, so nothing page-owned outlives the page here either.
+               It is also NOT a hidden proxy: it is the visible control the user pressed, so the UA's
+               focus restoration on Escape / light-dismiss lands on something that is on screen.
+               `popovertargetaction="toggle"` is written out rather than left to the default so a second
+               tap on the bar closes the menu even if a UA ever changed that default.
+
+               IT NAMES THE OUTER CONTROL BOX (`_menuId`), NOT THE ACTIONS PANEL (M1). On a phone this one
+               button is the route to EVERYTHING the header holds — the tools as well as the actions — so
+               the page body starts at the top of the viewport instead of under a row of filters and a row
+               of buttons. The in-page "…" keeps naming the actions panel; the two invokers open two
+               different popovers because they are live in two disjoint width ranges.
+
+               WHETHER IT SHOWS is still CSS's business, and for the unchanged reason: what a slot actually
+               renders is a per-user runtime value (permission gates), so the server publishes the button
+               whenever the page HAS a control slot and `_page-chrome.scss` hides it again unless the box
+               that stayed in the page really holds a control. Server-side it would be a guess.
+               WHAT CHANGED IS THE THRESHOLD, and only below 992px: one control is enough there, where it
+               used to take two actions. Above 992px this button is not rendered by the host at all (its
+               bar is a mobile bar) and the stylesheet hides it outright — see K1. *@
+            <button type="button" class="rg-topbar-actions rg-tap"
+                    popovertarget="@_menuId"
+                    popovertargetaction="toggle"
+                    aria-haspopup="true"
+                    aria-controls="@_menuId"
+                    aria-expanded="false"
+                    aria-label="@ActionsAccessibleName">
+                @* Horizontal ellipsis — identical to the header trigger's icon above, and for the
+                   same reason: this button now opens an anchored dropdown under the bar, not a
+                   bottom sheet. The two invokers share one glyph so they cannot drift. *@
+                <svg class="rg-actions-ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                    <circle cx="5" cy="12" r="2" fill="currentColor"/>
+                    <circle cx="12" cy="12" r="2" fill="currentColor"/>
+                    <circle cx="19" cy="12" r="2" fill="currentColor"/>
+                </svg>
+            </button>
+        }
+    </text>;
+
+    /// <summary>
+    /// The heading, at whatever level the page asked for.
+    /// <para>
+    /// Written through <see cref="RenderTreeBuilder"/> because Razor has no element whose TAG is a
+    /// variable, and the alternative — six <c>@@if</c> branches each repeating the same content — is
+    /// six places for the content to drift.
+    /// </para>
+    /// <para>
+    /// THE BACK LINK IS A SIBLING OF THE HEADING, NEVER A CHILD OF IT. It used to be the heading's first
+    /// child, which made it part of the heading's ACCESSIBLE NAME: the name is computed from the
+    /// element's contents, the link is icon-only and therefore contributes its own <c>aria-label</c>, and
+    /// every heading-navigation stop on the two detail pages that pass <see cref="BackHref"/> announced
+    /// "Back &lt;organisation&gt;" instead of the organisation. The page's title is not "Back …".
+    /// <list type="bullet">
+    /// <item><description>`aria-hidden` on the link was rejected: it hides the element from the
+    /// accessibility tree while leaving it in the SEQUENTIAL FOCUS ORDER, which is the one combination
+    /// that is always an error — a keyboard user with a screen reader lands on a control that does not
+    /// exist as far as the reader is concerned. Adding `tabindex="-1"` to fix that removes the back
+    /// affordance from the keyboard entirely.</description></item>
+    /// <item><description>`aria-label` on the HEADING was rejected: it would pin the name to the same
+    /// string the heading already displays, i.e. keep the wrong tree shape (an interactive control inside
+    /// a heading) and paper over it with a duplicated string that a future edit can desynchronise. It
+    /// also loses the name-from-content behaviour every other heading in the library has.</description></item>
+    /// <item><description>Making it a SIBLING fixes the cause instead: the heading's contents are the
+    /// title and nothing else, so its name is the title by the ordinary computation; the link keeps its
+    /// own name, its own focus stop and its own role. Nothing else about it changes.</description></item>
+    /// </list>
+    /// The two are held on one line by <c>.rg-pagechrome-titlerow</c>, a wrapper that exists ONLY in the
+    /// back-link case: a page without one renders exactly the markup it rendered before this change, so
+    /// the 29 headings that never had a back link keep their box model byte for byte.
+    /// </para>
+    /// <para>
+    /// F2 IS UNTOUCHED. This moves a link OUT of the heading; it does not move, hide or duplicate the
+    /// heading itself. Exactly one <c>h1</c> exists at every width, before and after.
+    /// </para>
+    /// </summary>
+    private void BuildHeading(RenderTreeBuilder builder)
+    {
+        // The back link is an in-page affordance. `TopbarOnly` renders no in-page header at all, and in
+        // that mode `BackHref` reaches the bar's own back control only — see the parameter's note.
+        var withBack = !string.IsNullOrEmpty(BackHref) && !TopbarOnly;
+
+        if (withBack)
+        {
+            builder.OpenElement(0, "div");
+            builder.AddAttribute(1, "class", "rg-pagechrome-titlerow");
+            // Leading in DOM order as well as visually: the link precedes the heading for a screen
+            // reader reading linearly exactly as it does for an eye scanning the row.
+            builder.AddContent(2, HeadingBack());
+        }
+
+        var level = Math.Clamp(HeadingLevel, 1, 6);
+        builder.OpenElement(3, "h" + level.ToString(CultureInfo.InvariantCulture));
+        // Both are null in `TopbarOnly` mode and Blazor then omits the attribute entirely — see
+        // HeadingCssClass. `title` is dropped with the same reasoning: it is the tooltip for a heading
+        // the user can SEE being clipped, and on a heading that is never painted it is not a tooltip at
+        // all, only a second string a screen reader may read back as the heading's description.
+        builder.AddAttribute(4, "class", HeadingCssClass);
+        builder.AddAttribute(5, "title", TopbarOnly ? null : Title);
+        builder.OpenElement(6, "span");
+        builder.AddAttribute(7, "class", "rg-pagechrome-titletext");
+        builder.AddContent(8, Title);
+        builder.CloseElement();
+        builder.CloseElement();
+
+        if (withBack)
+        {
+            builder.CloseElement();
+        }
+    }
+
+    private RenderFragment HeadingBack() => @<text>
+        <a href="@BackHref" class="rg-pagechrome-back rg-tap" aria-label="@BackAccessibleName">
+            <span class="rg-ico rg-ico-back" aria-hidden="true"></span>
+        </a>
+    </text>;
+
+}

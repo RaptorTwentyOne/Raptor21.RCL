@@ -1,5 +1,6 @@
 import {RaptorComponent} from '../core/Component'
 import {cssEscape} from '../core/dom'
+import {lockScroll, unlockScroll} from '../core/scroll-lock'
 
 /** Conditions are named `c[{i}].{part}`; the index is what groups inputs into one condition. */
 const CONDITION_NAME = /^c\[(\d+)\]\./
@@ -18,8 +19,22 @@ type FormField = HTMLInputElement | HTMLSelectElement
  * also why the badge and the per-field dots are recomputed here instead of arriving from the server.
  */
 export class FilterPanelComponent extends RaptorComponent {
+    /**
+     * Whether this instance is holding a page scroll lock — a ledger paired 1:1 with `lockScroll`/
+     * `unlockScroll`, NOT a second copy of the open state.
+     *
+     * The open state is the popover's (`:popover-open`) and nothing here mirrors it. What still needs a
+     * field is the lock, because teardown has to release exactly what it took: a panel destroyed while
+     * open leaves the top layer without going through `close()`.
+     */
+    private locked = false
+
     private get panelId(): string {
         return this.el.dataset.rfId ?? ''
+    }
+
+    private get panel(): HTMLElement | null {
+        return this.find<HTMLElement>('.rf-panel')
     }
 
     private get form(): HTMLFormElement | null {
@@ -33,35 +48,73 @@ export class FilterPanelComponent extends RaptorComponent {
         this.on('input', () => this.refreshState())
         this.on('change', () => this.refreshState())
 
-        // The trigger button lives outside the panel (a page toolbar), and Escape can be pressed with
-        // focus anywhere — both legitimately escape the element.
+        // The trigger button lives outside the panel (a page toolbar), so it legitimately escapes the
+        // element. ESCAPE IS NOT LISTENED FOR ANY MORE: the panel is a popover, so the user agent
+        // closes it — and the `toggle` handler below is what turns that into a released scroll lock.
         this.onDocument('click', event => this.onDocumentClick(event as MouseEvent))
-        this.onDocument('keydown', event => {
-            if ((event as KeyboardEvent).key === 'Escape' && this.isOpen) this.close()
-        })
+
+        // `toggle` does not bubble, so it is bound to the panel itself. It fires for every path in and
+        // out — the trigger, Escape, the scrim, `hidePopover()` — which is what makes it the single
+        // place the lock is written.
+        const panel = this.panel
+        if (panel) this.bind(panel, 'toggle', event => this.onToggle(event as ToggleEvent))
 
         // A panel left open when its markup is replaced would leave the page scroll-locked forever.
-        this.onDestroy(() => {
-            if (this.isOpen) document.body.style.overflow = ''
-        })
+        this.onDestroy(() => this.unlock())
 
         this.refreshState()
     }
 
     get isOpen(): boolean {
-        return this.el.classList.contains('rf-show')
+        return this.panel?.matches(':popover-open') ?? false
     }
 
+    /**
+     * `showPopover()` throws on an element that is already showing or is disconnected, which is exactly
+     * the guard `if (this.opened) return` used to be — so the try/catch replaces the field rather than
+     * merely wrapping it.
+     */
     open(): void {
-        this.el.classList.add('rf-show')
-        // Lock the page behind the overlay, never the panel's own scroller.
-        document.body.style.overflow = 'hidden'
+        const panel = this.panel
+        if (!panel) return
+        try {
+            panel.showPopover()
+        } catch {
+            /* already showing, or the node was replaced — nothing to open */
+            return
+        }
         this.find<HTMLElement>('.rf-x')?.focus()
     }
 
     close(): void {
-        this.el.classList.remove('rf-show')
-        document.body.style.overflow = ''
+        try {
+            this.panel?.hidePopover()
+        } catch {
+            /* not showing — nothing to close */
+        }
+    }
+
+    /**
+     * The lock, and only the lock.
+     *
+     * Counted in `core/scroll-lock`, so a panel opened over another locked overlay doesn't unlock the
+     * page when it alone closes; guarded here, so a `toggle` that repeats a state cannot double-count.
+     */
+    private onToggle(event: ToggleEvent): void {
+        if (event.newState === 'open') this.lock()
+        else this.unlock()
+    }
+
+    private lock(): void {
+        if (this.locked) return
+        this.locked = true
+        lockScroll()
+    }
+
+    private unlock(): void {
+        if (!this.locked) return
+        this.locked = false
+        unlockScroll()
     }
 
     private onDocumentClick(event: MouseEvent): void {

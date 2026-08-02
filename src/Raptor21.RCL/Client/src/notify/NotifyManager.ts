@@ -1,19 +1,38 @@
 /**
  * Toast notifications and a modal-independent confirmation dialog.
  *
- * Neither surface is an `.rg-modal`:
+ * Neither surface is an `.rg-modal`, and BOTH ARE IN THE TOP LAYER — by two different mechanisms,
+ * because they need two different things from it.
  *
- *  1. The confirm is built imperatively and renders above an already-open modal. A stacked `rg-modal`
- *     would join the modal stack and inherit its dismissal rules; this one answers a Promise and is
- *     unconditionally the top-most surface (z-index 2147483600).
- *  2. Both surfaces are appended to `document.body` rather than the shared modal container. See
- *     `ensureContainer()` for how that interacts with `ModalComponent.applyInertBelow()`.
+ *  1. The confirm is a native `<dialog>` opened with `showModal()`. It is built imperatively and renders
+ *     above an already-open modal; a stacked `rg-modal` would join the modal stack and inherit its
+ *     dismissal rules, while this one answers a Promise. It used to be a `<div>` at `--rg-z-confirm`
+ *     (700), and that number bought nothing: measured with the rail open, the element at the CENTRE of
+ *     the confirm was `DIV#sidebar-scroll` — the dialog was behind the drawer. Worse, `.rg-ask__ok` is
+ *     focused on open and is the DANGER button, so the user had a destructive confirmation focused and
+ *     invisible.
+ *  2. The toast stack is a `popover="manual"`. Not `auto`, measured: opening an `auto` popover CLOSES an
+ *     open rail, and a success message has no business closing the menu the user opened. `manual` takes
+ *     the same top layer and leaves the rail alone. Not `showModal()` either — that would trap focus,
+ *     darken the page and make everything else inert, for a notification.
+ *
+ * THE TOAST STACK IS A TOP-LAYER GUEST (`data-rg-top-layer-guest`, core/dom.ts). A toast is not passive:
+ * `show()` puts a `.rg-toast__close` button in every one and error toasts default to `duration: 0`, so
+ * they stand until that button is pressed. `showModal()` makes everything that is not a descendant of
+ * the dialog inert INCLUDING top-layer elements — measured, a `manual` popover over an open dialog was
+ * visible and its button fired nothing — which would leave an undismissable error banner for as long as
+ * any modal is open. So the container is re-parented into whatever owns the top layer, and handed back
+ * when that closes.
  *
  * The markup is built with innerHTML, so it carries no CSS-isolation scope attribute and only global
  * rules can reach it. Its stylesheet is therefore part of the library's own bundle rather than a scoped
  * one.
  */
 
+import {isTopDialog, openDialog, popDialog} from '../core/dialog-stack'
+import {reseatTopLayerGuests, restackTopLayerGuest, topLayerHost} from '../core/dom'
+import {lockScroll, unlockScroll} from '../core/scroll-lock'
+import {PAGE_RESTORE_EVENT} from '../runtime/page-lifecycle'
 import type {
     RaptorConfirmOptions,
     RaptorNotifyApi,
@@ -76,10 +95,10 @@ export class NotifyManager implements RaptorNotifyApi {
                     ? {icon: 'ri-error-warning-line', color: 'rg-ask__icon--warning'}
                     : {icon: 'ri-question-line', color: 'rg-ask__icon--info'}
 
-            const overlay = document.createElement('div')
+            const overlay = document.createElement('dialog')
             overlay.className = 'rg-ask-overlay rg-ask-overlay--hidden'
-            // Above the toast container, so a confirm is always the top-most surface.
-            overlay.style.zIndex = '2147483600'
+            // The scrim, inline so it beats the UA `<dialog>` neutralisation in _notify.scss. Stacking is
+            // the top layer's opening order now, not a z-index.
             overlay.style.backgroundColor = 'rgba(0,0,0,0.5)'
 
             const dialog = document.createElement('div')
@@ -102,6 +121,20 @@ export class NotifyManager implements RaptorNotifyApi {
 
             overlay.appendChild(dialog)
             document.body.appendChild(overlay)
+            // The top layer, and with it the inert background — the whole reason this stopped being a
+            // z-index. Through `openDialog` so the confirm is REGISTERED on the shared dialog stack in
+            // the same statement it is shown: that register is what tells this dialog's Escape handler
+            // below whether it is the one the user is actually looking at. Guarded inside: an engine
+            // without <dialog> keeps the styled overlay in the normal layer, which is where it was
+            // before, and still gets its place in the Escape order.
+            openDialog(overlay)
+            // Adopt the toast stack, exactly as ModalComponent does: `showModal()` makes every
+            // non-descendant inert, and a toast already on screen would otherwise be visible with a
+            // dead close button for as long as this confirm is up.
+            reseatTopLayerGuests(overlay)
+            // Counted, so a confirm raised over an already-open modal doesn't unlock the page when the
+            // confirm alone closes.
+            lockScroll()
 
             requestAnimationFrame(() => {
                 overlay.classList.remove('rg-ask-overlay--hidden')
@@ -112,18 +145,68 @@ export class NotifyManager implements RaptorNotifyApi {
             const close = (result: boolean) => {
                 if (settled) return
                 settled = true
+                // De-registered HERE and not in the `setTimeout` below, even though the element stays
+                // connected and `open` through the whole 200ms fade: for those 200ms this dialog is on
+                // its way out and must not keep answering for Escape, or a user pressing it twice in
+                // quick succession loses the second press to a box that is already dismissed.
+                popDialog(overlay)
+                overlay.removeEventListener('cancel', onCancel)
                 document.removeEventListener('keydown', onKey)
+                document.removeEventListener(PAGE_RESTORE_EVENT, onRestore)
                 overlay.classList.add('rg-ask-overlay--hidden')
                 dialog.classList.add('rg-ask--collapsed')
-                setTimeout(() => overlay.remove(), 200)
+                unlockScroll()
+                // Left OPEN through the fade so the box does not vanish in one frame; `remove()` takes it
+                // out of the top layer, which is what `close()` would otherwise have done early. The
+                // guests are handed back AFTER the removal and searched for FROM the removed element —
+                // `topLayerHost()` would still answer this overlay while it is connected, and a detached
+                // node keeps its children, which is the only way an adopted toast survives the close.
+                setTimeout(() => {
+                    overlay.remove()
+                    reseatTopLayerGuests(topLayerHost(), overlay)
+                }, 200)
                 resolve(result)
             }
 
+            /* Escape, by BOTH routes, and the redundancy is measured rather than defensive.
+               `cancel` is the UA close watcher's event and is the correct one; a trusted Escape was
+               measured reaching the page (`isTrusted: true`, `defaultPrevented: false`) while a bare
+               `<dialog>.showModal()` probe stayed OPEN and fired neither `cancel` nor `close`, so the
+               watcher cannot be relied on alone. The keydown listener is what actually dismisses this
+               dialog today; `close()` is idempotent, so an engine that fires both loses nothing.
+
+               WHAT IS DELIBERATELY NOT HERE IS THE ENTER BINDING. The listener this replaces mapped
+               Enter to `close(true)` while `.rg-ask__ok` — the DANGER button — holds focus, and while
+               this surface was a z-indexed `<div>` it was measured sitting BEHIND an open rail: a
+               destructive confirmation the user could not see, focused, one keystroke from firing.
+               Enter needs no binding: focus is on a real `<button>`, so the UA activates whichever one
+               actually has it — Cancel if the user tabbed to Cancel, which the old handler got wrong.
+               `preventDefault` on `cancel` because dismissal here is `remove()` after the fade-out, not
+               the UA's own close. */
+            const onCancel = (ev: Event) => {
+                ev.preventDefault()
+                close(false)
+            }
+            overlay.addEventListener('cancel', onCancel)
+
+            /* GATED ON THE SHARED STACK, and this is the defect that put that stack there. Measured,
+               Chrome 390x844, real bundles, one TRUSTED Escape: with this confirm open and a
+               `data-rg-modal-static` `.rg-modal` opened OVER it, `staticModalStillOpen: true` — the
+               dialog on screen correctly refused the key — while `askResult: false` and this overlay
+               was REMOVED. An ungated document listener answers for a dialog the user cannot see, and
+               resolves a Promise its caller is still waiting on. `isTopDialog` is the only thing that
+               can tell the two apart, because the surface on top need not be an `.rg-modal` at all. */
             const onKey = (ev: KeyboardEvent) => {
-                if (ev.key === 'Escape') close(false)
-                else if (ev.key === 'Enter') close(true)
+                if (ev.key === 'Escape' && isTopDialog(overlay)) close(false)
             }
             document.addEventListener('keydown', onKey)
+
+            // The overlay is a body child outside `#app-root`, so a back/forward restore swapping the
+            // page region leaves it floating over the restored page with its Promise unanswered and its
+            // scroll lock held. Restore counts as a dismissal (resolves false) — restore only, forward
+            // navigation behaviour is unchanged.
+            const onRestore = () => close(false)
+            document.addEventListener(PAGE_RESTORE_EVENT, onRestore)
 
             overlay.addEventListener('click', ev => {
                 if (ev.target === overlay) close(false)
@@ -164,6 +247,13 @@ export class NotifyManager implements RaptorNotifyApi {
 
         container.appendChild(toast)
 
+        // Shows the container — a `manual` popover starts hidden — AND re-stacks it above anything that
+        // entered the top layer since the previous toast. Order there is the order things were SHOWN and
+        // nothing re-orders it in place, so a container shown before the rail stays under the rail until
+        // it is taken down and put back up. Cheap enough to run unconditionally: it is two synchronous
+        // calls on one element, with no layout flush between them.
+        restackTopLayerGuest(container)
+
         requestAnimationFrame(() => {
             toast.classList.remove('rg-toast--hidden')
         })
@@ -172,7 +262,19 @@ export class NotifyManager implements RaptorNotifyApi {
         const dismiss = () => {
             if (timer) clearTimeout(timer)
             toast.classList.add('rg-toast--hidden')
-            setTimeout(() => toast.remove(), 300)
+            setTimeout(() => {
+                toast.remove()
+                // An empty stack leaves the top layer instead of lingering there as a `display: none`
+                // popover. `:empty` already keeps it from painting; this keeps it from being a stale
+                // entry that the next `restackTopLayerGuest` has to take down first.
+                if (container.childElementCount === 0) {
+                    try {
+                        container.hidePopover()
+                    } catch {
+                        /* not showing, or an engine without the popover API — nothing to take down */
+                    }
+                }
+            }, 300)
         }
 
         toast.querySelector('.rg-toast__close')?.addEventListener('click', dismiss)
@@ -209,30 +311,38 @@ export class NotifyManager implements RaptorNotifyApi {
     }
 
     /**
-     * The fixed column toasts are appended to.
+     * The fixed column toasts are appended to, parented to whatever owns the top layer right now.
      *
      * Re-resolved rather than cached across navigations: a boosted swap can replace the subtree the
      * container lived in, and appending into a detached node produces a toast nobody sees.
      *
-     * Appended to `document.body` rather than the shared modal container. `ModalComponent.applyInertBelow()`
-     * walks `document.body.children` and marks every child that does not contain the topmost dialog
-     * `inert`, so as a body child this container goes inert while a modal is open — but only if it already
-     * existed when the modal mounted, since that pass runs on open and close.
+     * `popover="manual"` is what puts it in the top layer, and `manual` specifically: an `auto` popover
+     * is mutually exclusive with the others, and measured, opening one CLOSED the sidebar rail. A toast
+     * that shuts the menu the user just opened is not acceptable, and `manual` was measured taking the
+     * same layer while leaving the rail open.
+     *
+     * `topLayerHost()` and not `document.body`: `showModal()` makes everything outside the dialog inert,
+     * top-layer elements included — measured, a `manual` popover over an open dialog painted normally and
+     * a real click on it fired nothing. As a body child this container would therefore hold an
+     * undismissable error toast (`duration: 0`) for as long as any modal was open. The
+     * `data-rg-top-layer-guest` marker is what gets it moved BACK when that dialog closes; without it the
+     * container would be removed along with the dialog it was adopted into (ModalComponent.teardown).
      */
     private ensureContainer(): HTMLElement {
-        if (this.container && document.body.contains(this.container)) {
-            return this.container
-        }
+        const host = topLayerHost()
 
-        let container = document.getElementById(CONTAINER_ID)
+        let container = this.container
+        if (!container?.isConnected) container = document.getElementById(CONTAINER_ID)
+
         if (!container) {
             container = document.createElement('div')
             container.id = CONTAINER_ID
             container.className = 'rg-toast-stack'
-            // Above modals.
-            container.style.zIndex = '2147483000'
-            document.body.appendChild(container)
+            container.setAttribute('data-rg-top-layer-guest', '')
+            container.setAttribute('popover', 'manual')
         }
+
+        if (container.parentElement !== host) host.appendChild(container)
 
         this.container = container
         return container

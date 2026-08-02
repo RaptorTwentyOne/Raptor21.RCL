@@ -17,9 +17,14 @@
         || (c.Filter == GridFilterType.Set && c.SetOptions is { Count: > 0 });
     var popupColumns = Model.Columns.Where(HasPopup).ToList();
     var tableMinWidth = Model.Columns.Sum(c => c.MinWidth ?? c.Width ?? 130) + (Model.Selectable ? 44 : 0) + (Model.HasDetail ? 40 : 0);
+
+    // Server-rendered mark that hands the drawer's opener to the page shell — see RaptorGridFilterEntry.
+    // It rides the swapped markup so the footer's height changes in the same paint as the rows; applying
+    // it from script afterwards costs a measured 60px shift on every page/filter change.
+    var filterEntryMark = Model.FilterEntry == RaptorGridFilterEntry.PageChrome && popupColumns.Count > 0 ? "" : null;
 }
 
-<div id="@regionId" data-rg-component="grid" class="raptor-grid@(Model.HasCards ? " rg-has-cards" : "")@(Model.Compact ? " rg-compact" : "")" data-grid-id="@Model.GridId" data-rg-virtual="@Model.VirtualScroll.ToString().ToLowerInvariant()" data-rg-total="@Model.TotalCount" data-rg-cell-endpoint="@Model.CellUrl">
+<div id="@regionId" data-rg-component="grid" class="raptor-grid@(Model.HasCards ? " rg-has-cards" : "")@(Model.Compact ? " rg-compact" : "")" data-grid-id="@Model.GridId" data-rg-virtual="@Model.VirtualScroll.ToString().ToLowerInvariant()" data-rg-total="@Model.TotalCount" data-rg-filter-entry="@filterEntryMark" data-rg-cell-endpoint="@Model.CellUrl">
     <form id="@formId"
           class="rg-form"
           hx-post="@Model.Endpoint"

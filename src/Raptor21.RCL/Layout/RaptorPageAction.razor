@@ -1,0 +1,85 @@
+@namespace Raptor21.RCL.Layout
+
+@* =================================================================================================
+   One action, ONE node — the same node whether it is sitting inline in the header or stacked in the
+   "…" menu. Nothing is cloned and nothing is moved: which of the two it looks like is decided by CSS
+   on the panel around it (`_page-chrome.scss`), never by re-rendering it somewhere else.
+
+   That constraint is why `@@attributes` lands on a single element. Everything the author attaches —
+   `data-rg-export*` picked up by document-level delegation, `hx-get`/`hx-target`, an `id` some other
+   script addresses, `title` — has to be on the node that is actually clicked. Split the markup into a
+   wrapper plus an inner button and half of those contracts attach to the wrong one.
+
+   Using this component is OPTIONAL. The `Actions` slot is a transparent host: a raw <button>, a
+   <form>, an <a href>, a RaptorButton or a nested dropdown all count the same, because the one-inline
+   / two-or-more-in-a-menu threshold counts ELEMENT CHILDREN and does not care what they are.
+
+   EMPHASIS IS A CLASS, NOT A SECOND SHAPE. `Emphasis` adds one modifier class and changes nothing else:
+   no extra element, no attribute, no branch in the markup below. That is what lets the stylesheet undo
+   it — the flattening rules for the two menu surfaces only have to reset two custom properties on the
+   one node, and they cannot get out of step with a Razor `@@if` that decided the shape on the server,
+   which is impossible anyway (which surface an action lands on is a CSS answer, per width, per count).
+   ================================================================================================= *@
+
+<button type="button"
+        class="@CssClass"
+        @attributes="AdditionalAttributes">
+    @if (!string.IsNullOrWhiteSpace(Icon))
+    {
+        <i class="@Icon rg-pageaction-ico" aria-hidden="true"></i>
+    }
+    <span class="rg-pageaction-label">@ChildContent</span>
+</button>
+
+@code {
+
+    /// <summary>Icon class(es) for the consuming app's icon font, e.g. <c>ri-file-excel-2-line</c>.
+    /// The element is omitted entirely when unset, so no empty box is reserved.</summary>
+    [Parameter]
+    public string? Icon { get; set; }
+
+    /// <summary>The action's label.</summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Extra classes, appended after the component's own.</summary>
+    [Parameter]
+    public string? Class { get; set; }
+
+    /// <summary>How loudly this action paints itself when it is INLINE; flattened to nothing inside the
+    /// "…" menu. See <see cref="PageActionEmphasis"/> for why that asymmetry is the point.</summary>
+    [Parameter]
+    public PageActionEmphasis Emphasis { get; set; } = PageActionEmphasis.None;
+
+    /// <summary>Splatted onto the button — the same element the user clicks. See the note above.</summary>
+    [Parameter(CaptureUnmatchedValues = true)]
+    public IReadOnlyDictionary<string, object?>? AdditionalAttributes { get; set; }
+
+    /// <summary>
+    /// The whole class list, built in ONE expression rather than interpolated into the attribute.
+    /// <para>
+    /// Not a style preference: <c>class="rg-pageaction rg-tap@@(Expr)"</c> does not compile. Razor's
+    /// email-address heuristic treats an <c>@@</c> that directly follows a word character as literal text,
+    /// so the parser reads <c>rg-tap@@</c> as text and then chokes on the parenthesised expression behind
+    /// it (CS1026/CS1003). Composing here also keeps the separators with the fragments that need them, so
+    /// the default case emits exactly <c>rg-pageaction rg-tap</c> — no trailing space for a DOM diff or an
+    /// attribute-value selector to trip over.
+    /// </para>
+    /// </summary>
+    private string CssClass
+    {
+        get
+        {
+            var cls = "rg-pageaction rg-tap";
+            cls += Emphasis switch
+            {
+                PageActionEmphasis.Primary => " rg-pageaction--primary",
+                PageActionEmphasis.Success => " rg-pageaction--success",
+                _ => string.Empty,
+            };
+            if (!string.IsNullOrWhiteSpace(Class)) cls += $" {Class.Trim()}";
+            return cls;
+        }
+    }
+
+}

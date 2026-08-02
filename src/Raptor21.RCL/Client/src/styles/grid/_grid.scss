@@ -1,3 +1,5 @@
+@use '../tap' as tap;
+
 /* Grid is a flex column: header (thead, sticky) + a flex-filling scroll body + a footer that is
    always visible. JS (fitGrid) sizes .raptor-grid to the remaining viewport height so the footer
    pins to the bottom of the screen; only the body between header and footer scrolls. */
@@ -99,7 +101,7 @@ body.rg-col-resizing .raptor-grid .rg-resize::after { background: var(--rg-accen
 .raptor-grid.rg-nested .rg-scrollwrap { max-height: 60vh; }
 .raptor-grid tr.rg-sentinel td.rg-loading-row { text-align: center; padding: .85rem 1rem; color: var(--rg-muted); }
 /* Filter popups live at form level and are portaled visually via position:fixed (set by JS). */
-.raptor-grid .rg-pop { position: fixed; z-index: 60; display: none; width: 15rem; padding: .625rem; border: 1px solid var(--rg-border); border-radius: .375rem; background: var(--rg-surface); color: var(--rg-fg); box-shadow: 0 10px 30px rgba(0,0,0,.18); }
+.raptor-grid .rg-pop { position: fixed; z-index: var(--rg-z-popover); display: none; width: 15rem; padding: .625rem; border: 1px solid var(--rg-border); border-radius: .375rem; background: var(--rg-surface); color: var(--rg-fg); box-shadow: 0 10px 30px rgba(0,0,0,.18); }
 .dark .raptor-grid .rg-pop { box-shadow: 0 10px 30px rgba(0,0,0,.5); }
 .raptor-grid .rg-pop.rg-open { display: block; }
 .raptor-grid .rg-pop-label { font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; opacity: .55; margin-bottom: .4rem; }
@@ -264,47 +266,9 @@ body.rg-col-resizing .raptor-grid .rg-resize::after { background: var(--rg-accen
    leaf row's sticky top offset (= group-row height) is set by JS so both rows stay pinned. */
 .raptor-grid th.rg-group { text-align: center; font-weight: 700; background: var(--rg-header-bg); }
 .raptor-grid thead .rg-leafrow th { top: 0; }
-/* ---- Mobile: stacked cards. JS adds .rg-cards when the grid is narrower than the breakpoint;
-   each row folds into a card with the column header (data-label) shown above its value. The
-   header row, colgroup widths, pinning and viewport-fit are all disabled in this mode. ---- */
-.raptor-grid.rg-cards { height: auto; }
-.raptor-grid.rg-cards .rg-form { display: block; }
-.raptor-grid.rg-cards .rg-scrollwrap { overflow: visible; max-height: none; }
-.raptor-grid.rg-cards table { display: block; width: 100% !important; min-width: 0 !important; }
-.raptor-grid.rg-cards colgroup, .raptor-grid.rg-cards thead { display: none; }
-.raptor-grid.rg-cards tbody { display: block; }
-.raptor-grid.rg-cards tbody tr { display: block; margin: .5rem; border: 1px solid var(--rg-border); border-radius: .5rem; background: var(--rg-bg); box-shadow: 0 1px 3px rgba(0,0,0,.06); overflow: hidden; }
-/* The card display:block above outranks the [hidden] UA rule — restore it so collapsed detail rows
-   (and any hidden row) stay hidden instead of showing their "Loading…" placeholder. */
-.raptor-grid.rg-cards tbody tr[hidden] { display: none; }
-.dark .raptor-grid.rg-cards tbody tr { border-color: rgba(255,255,255,.12); background: rgba(255,255,255,.02); }
-.raptor-grid.rg-cards tbody tr:hover { background: var(--rg-bg); }
-.raptor-grid.rg-cards tbody tr.rg-row-sel { background: rgba(59,130,246,.1); }
-.dark .raptor-grid.rg-cards tbody tr.rg-row-sel { background: rgba(59,130,246,.18); }
-.raptor-grid.rg-cards td { display: block; width: auto !important; text-align: left; white-space: normal; overflow: visible; text-overflow: clip; padding: .5rem .8rem; border: 0; border-bottom: 1px solid rgba(0,0,0,.06); box-shadow: none !important; position: static !important; }
-.dark .raptor-grid.rg-cards td { border-bottom-color: rgba(255,255,255,.06); }
-.raptor-grid.rg-cards td:last-child { border-bottom: 0; }
-.raptor-grid.rg-cards td::before { content: attr(data-label); display: block; font-size: .66rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; opacity: .5; margin-bottom: .15rem; }
-.raptor-grid.rg-cards td[data-label=""]::before, .raptor-grid.rg-cards td:not([data-label])::before { content: none; }
-.raptor-grid.rg-cards .rg-trunc { white-space: normal; overflow: visible; text-overflow: clip; }
-/* Leading expand/select controls sit at the top of the card, unlabelled. */
-.raptor-grid.rg-cards td.rg-expand-cell, .raptor-grid.rg-cards td.rg-sel-cell { display: inline-block; width: auto !important; border-bottom: 0; padding: .5rem .45rem; vertical-align: middle; }
-.raptor-grid.rg-cards td.rg-expand-cell::before, .raptor-grid.rg-cards td.rg-sel-cell::before { content: none; }
-.raptor-grid.rg-cards td.rg-empty { text-align: center; }
-/* Master-detail row folds as its own block under the card. */
-.raptor-grid.rg-cards tr.rg-detail-row { display: block; margin: -.35rem .5rem .5rem; }
-.raptor-grid.rg-cards td.rg-detail-cell { display: block; width: auto !important; }
-.raptor-grid.rg-cards td.rg-detail-cell::before { content: none; }
-.raptor-grid.rg-cards .rg-detail { position: static; width: auto !important; }
 /* Custom mobile card (GridDefinition.CardRender). Hidden in the table; in card mode it replaces the
    auto label:value fold and IS the whole list item. Tapping the card toggles master-detail. */
 .raptor-grid .rg-card { display: none; }
-/* Hide the auto-fold cells ONLY for THIS grid's own table (child chain) — a plain descendant
-   selector would also blank a nested grid's cells inside the master-detail panel. */
-.raptor-grid.rg-cards.rg-has-cards > .rg-form > .rg-scrollwrap > table > tbody > tr > td:not(.rg-card):not(.rg-detail-cell):not(.rg-empty) { display: none; }
-.raptor-grid.rg-cards.rg-has-cards td.rg-card { display: block; width: auto !important; padding: 0; border: 0; position: relative !important; overflow: hidden; }
-.raptor-grid.rg-cards.rg-has-cards td.rg-card::before { content: none; }
-.raptor-grid.rg-cards.rg-has-cards tbody tr[data-row-key]:has(.rg-expand) { cursor: pointer; }
 /* Subtle tap ripple (Material-ish), theme-adaptive via currentColor; JS positions it at the tap. */
 .raptor-grid .rg-ripple { position: absolute; border-radius: 50%; transform: scale(0); pointer-events: none; background: currentColor; opacity: .1; animation: rg-ripple .45s ease-out forwards; }
 @keyframes rg-ripple { to { transform: scale(2.4); opacity: 0; } }
@@ -330,22 +294,492 @@ body.rg-col-resizing .raptor-grid .rg-resize::after { background: var(--rg-accen
    (display:contents) so the per-column popups still float from their funnels. Card mode: the FAB
    opens a right-side drawer holding the same popups stacked as sections. ---- */
 .raptor-grid .rg-filter-fab, .raptor-grid .rg-filter-backdrop, .raptor-grid .rg-filter-head, .raptor-grid .rg-filter-actions { display: none; }
-.raptor-grid .rg-filter-drawer, .raptor-grid .rg-filter-body { display: contents; }
-.raptor-grid.rg-cards .rg-filter-fab { display: inline-flex; align-items: center; gap: .4rem; position: fixed; right: 1rem; bottom: 1rem; z-index: 45; padding: .6rem .95rem; border: 0; border-radius: 9999px; background: var(--rg-accent); color: #fff; font-size: .85rem; font-weight: 600; box-shadow: 0 4px 14px rgba(0,0,0,.3); cursor: pointer; }
-.raptor-grid.rg-cards .rg-filter-fab .rg-filter-count { min-width: 1.15rem; height: 1.15rem; padding: 0 .3rem; border-radius: 9999px; background: rgba(255,255,255,.92); color: var(--rg-accent); font-size: .7rem; line-height: 1.15rem; text-align: center; }
-.raptor-grid.rg-cards.rg-filters-open .rg-filter-backdrop { display: block; position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.45); }
-.raptor-grid.rg-cards .rg-filter-drawer { display: flex; flex-direction: column; position: fixed; top: 0; right: 0; bottom: 0; width: min(86vw, 360px); z-index: 51; background: var(--rg-bg); box-shadow: -8px 0 24px rgba(0,0,0,.3); transform: translateX(100%); transition: transform .25s ease; }
-.raptor-grid.rg-cards.rg-filters-open .rg-filter-drawer { transform: translateX(0); }
-.raptor-grid.rg-cards .rg-filter-head { display: flex; align-items: center; justify-content: space-between; padding: .85rem 1rem; border-bottom: 1px solid rgba(0,0,0,.1); font-weight: 600; font-size: .95rem; }
-.dark .raptor-grid.rg-cards .rg-filter-head { border-bottom-color: rgba(255,255,255,.12); }
-.raptor-grid.rg-cards .rg-filter-x { border: 0; background: none; color: inherit; cursor: pointer; opacity: .7; padding: .2rem; font-size: 1.05rem; }
-.raptor-grid.rg-cards .rg-filter-body { display: block; flex: 1 1 auto; overflow-y: auto; padding: .25rem .5rem; }
-.raptor-grid.rg-cards .rg-filter-actions { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .75rem 1rem; border-top: 1px solid rgba(0,0,0,.1); }
-.dark .raptor-grid.rg-cards .rg-filter-actions { border-top-color: rgba(255,255,255,.12); }
-.raptor-grid.rg-cards .rg-filter-done { padding: .4rem 1.1rem; min-width: auto; width: auto; }
-/* Popups become stacked inline sections inside the drawer (override the floating popup styling). */
-.raptor-grid.rg-cards .rg-filter-body .rg-pop { display: block; position: static; width: auto; box-shadow: none; border: 0; border-bottom: 1px solid rgba(0,0,0,.07); border-radius: 0; padding: .65rem .4rem; }
-.dark .raptor-grid.rg-cards .rg-filter-body .rg-pop { border-bottom-color: rgba(255,255,255,.08); }
-.raptor-grid.rg-cards .rg-filter-body .rg-pop .rg-pop-actions { justify-content: flex-start; }
+/* `display: contents` is also what neutralises the UA popover sheet here: an element that generates no
+   box has no `inset`, `margin`, `padding`, `border`, `overflow` or `background` to correct, and this
+   author declaration beats `[popover]:not(:popover-open) { display: none }` on ORIGIN whatever the
+   specificity. So the drawer carrying `popover="auto"` costs the table mode exactly nothing — the
+   per-column popups still float from their funnels through three levels of `display: contents`. */
+.raptor-grid .rg-filter-drawer, .raptor-grid .rg-filter-panel, .raptor-grid .rg-filter-body { display: contents; }
 /* Nested grids (inside a master-detail panel) don't get their own FAB — one filter entry per screen. */
 .raptor-grid .rg-detail .rg-filter-fab { display: none !important; }
+
+/* ---- Mobile: stacked cards ---------------------------------------------------------------------
+   Each row folds into a card with the column header (data-label) shown above its value; the header
+   row, colgroup widths, pinning and viewport-fit are all disabled, and the per-column filter popups
+   move into a slide-in drawer opened by a floating button.
+
+   Written once as a mixin and emitted TWICE, because two independent things decide a grid is narrow:
+
+     1. `.rg-cards` — the class `GridLayout` adds after measuring the REGION. This is the only signal
+        that catches a grid squeezed into a narrow container on a wide screen (a sidebar, a split
+        pane, a detail panel), and the only one that re-evaluates when that container resizes.
+     2. `@media (max-width: …)` — the VIEWPORT test, which needs no script at all. The server can only
+        render the table (SSR cannot know the viewport), and the class above lands after the bundle
+        has parsed, the grid chunk has been imported and the region measured — so on a phone the first
+        paint was a full table that visibly snapped into cards a moment later, on every boosted
+        navigation rather than just the first load. With the media query the cards are painted
+        immediately and `GridLayout` then adds a class that changes nothing.
+
+   The media copy doubles the class (`.raptor-grid.raptor-grid`) purely for specificity: it makes both
+   copies weigh exactly the same, so the media one keeps outranking the desktop rules that the
+   `.rg-cards` copy already outranks — `.raptor-grid.rg-nested .rg-scrollwrap` among them. Several of
+   those pairs tie and are decided by source order, which is why both includes sit at the very end of
+   this file, after every rule they override. ---- */
+@mixin rg-card-mode($g) {
+    #{$g} { height: auto; }
+    #{$g} .rg-form { display: block; }
+    #{$g} .rg-scrollwrap { overflow: visible; max-height: none; }
+    /* !important beats the server's inline `min-width` on the table and the px widths on <col>. */
+    #{$g} table { display: block; width: 100% !important; min-width: 0 !important; }
+    #{$g} colgroup, #{$g} thead { display: none; }
+    #{$g} tbody { display: block; }
+    #{$g} tbody tr { display: block; margin: .5rem; border: 1px solid var(--rg-border); border-radius: .5rem; background: var(--rg-bg); box-shadow: 0 1px 3px rgba(0,0,0,.06); overflow: hidden; }
+    /* The card display:block above outranks the [hidden] UA rule — restore it so collapsed detail rows
+       (and any hidden row) stay hidden instead of showing their "Loading…" placeholder. */
+    #{$g} tbody tr[hidden] { display: none; }
+    .dark #{$g} tbody tr { border-color: rgba(255,255,255,.12); background: rgba(255,255,255,.02); }
+    #{$g} tbody tr:hover { background: var(--rg-bg); }
+    #{$g} tbody tr.rg-row-sel { background: rgba(59,130,246,.1); }
+    .dark #{$g} tbody tr.rg-row-sel { background: rgba(59,130,246,.18); }
+    #{$g} td { display: block; width: auto !important; text-align: left; white-space: normal; overflow: visible; text-overflow: clip; padding: .5rem .8rem; border: 0; border-bottom: 1px solid rgba(0,0,0,.06); box-shadow: none !important; position: static !important; }
+    .dark #{$g} td { border-bottom-color: rgba(255,255,255,.06); }
+    #{$g} td:last-child { border-bottom: 0; }
+    #{$g} td::before { content: attr(data-label); display: block; font-size: .66rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; opacity: .5; margin-bottom: .15rem; }
+    #{$g} td[data-label=""]::before, #{$g} td:not([data-label])::before { content: none; }
+    #{$g} .rg-trunc { white-space: normal; overflow: visible; text-overflow: clip; }
+    /* Leading expand/select controls sit at the top of the card, unlabelled. */
+    #{$g} td.rg-expand-cell, #{$g} td.rg-sel-cell { display: inline-block; width: auto !important; border-bottom: 0; padding: .5rem .45rem; vertical-align: middle; }
+    #{$g} td.rg-expand-cell::before, #{$g} td.rg-sel-cell::before { content: none; }
+    #{$g} td.rg-empty { text-align: center; }
+    /* Master-detail row folds as its own block under the card. */
+    #{$g} tr.rg-detail-row { display: block; margin: -.35rem .5rem .5rem; }
+    #{$g} td.rg-detail-cell { display: block; width: auto !important; }
+    #{$g} td.rg-detail-cell::before { content: none; }
+    #{$g} .rg-detail { position: static; width: auto !important; }
+    /* Custom mobile card (GridDefinition.CardRender): in card mode it replaces the auto label:value
+       fold and IS the whole list item. Hide the auto-fold cells ONLY for THIS grid's own table (child
+       chain) — a plain descendant selector would also blank a nested grid's cells inside the
+       master-detail panel. Skeleton rows are exempt: they are rendered before any row data exists, so
+       they have no `.rg-card` cell to stand in for, and hiding their plain cells would leave an empty
+       bordered box where the deferred first-paint placeholder should be. */
+    #{$g}.rg-has-cards > .rg-form > .rg-scrollwrap > table > tbody > tr:not(.rg-skeleton-row) > td:not(.rg-card):not(.rg-detail-cell):not(.rg-empty) { display: none; }
+    #{$g}.rg-has-cards td.rg-card { display: block; width: auto !important; padding: 0; border: 0; position: relative !important; overflow: hidden; }
+    #{$g}.rg-has-cards td.rg-card::before { content: none; }
+    #{$g}.rg-has-cards tbody tr[data-row-key]:has(.rg-expand) { cursor: pointer; }
+    /* Skeleton cells stack inside the card box; the card padding replaces the table cell padding. */
+    #{$g} .rg-skeleton-row td { padding: .5rem .8rem; }
+
+    /* Filter drawer: the FAB opens a right-side drawer holding the per-column popups stacked as
+       sections (in card mode the column headers, and with them the funnel buttons, are off screen). */
+    /* THE FAB IS A `popover="manual"` AND `MobileFilterDrawer` SHOWS IT AT MOUNT — see the markup note
+       in RaptorGridRegion.razor for the measurement that forced it (a 56px vertical JUMP in the first
+       frame of every rail open, because the pushed content column becomes its containing block the
+       moment RaptorSidebar's Push mode puts a `translate` on it).
+
+       `display: inline-flex` here is at (0,3,0) and beats the UA's
+       `[popover]:not(:popover-open) { display: none }` on origin, which is what makes the attribute
+       harmless before the script arrives — and what makes it harmless at desktop widths, where the base
+       rule above hides the button whether or not it is showing.
+
+       `inset: auto` FIRST, then the two edges that are wanted. Chrome's `[popover]` UA rule is
+       `inset: 0; width: fit-content; height: fit-content; margin: auto; …`, and it applies to the
+       element whether or not it is showing: left over, `left: 0` + `right: 1rem` + `width: fit-content`
+       + `margin: auto` CENTRES the FAB in the row instead of pinning it to the trailing edge. `margin`,
+       `overflow` and the two sizes are corrected for the same reason; `padding`, `border`, `background`
+       and `color` were already being set below and need no separate line. */
+    #{$g} .rg-filter-fab { display: inline-flex; align-items: center; gap: .4rem; position: fixed; inset: auto; margin: 0; inline-size: auto; block-size: auto; overflow: visible; right: 1rem; bottom: 1rem; bottom: calc(1rem + env(safe-area-inset-bottom)); z-index: calc(var(--rg-z-chrome) + 20); padding: .6rem .95rem; border: 0; border-radius: 9999px; background: var(--rg-accent); color: #fff; font-size: .85rem; font-weight: 600; box-shadow: 0 4px 14px rgba(0,0,0,.3); cursor: pointer; }
+    #{$g} .rg-filter-fab .rg-filter-count { min-width: 1.15rem; height: 1.15rem; padding: 0 .3rem; border-radius: 9999px; background: rgba(255,255,255,.92); color: var(--rg-accent); font-size: .7rem; line-height: 1.15rem; text-align: center; }
+    /* ---- THE DRAWER IS IN THE TOP LAYER: SHELL / SCRIM / PANEL ----------------------------------
+       `.rg-filter-drawer` carries `popover="auto"`, so Escape and the open/closed state come from the
+       user agent, and — the reason this had to change — its containing block is the VIEWPORT no matter
+       what an ancestor does. Both halves were measured failing before: a real Escape left the drawer up
+       with `body { overflow: hidden }` still held, and opening the rail underneath an open drawer took
+       it from [140,0,360,723] to [375,56,360,2519] (height 723 -> 2519, right edge 735 off a 500px
+       viewport) while the backdrop stopped covering the top bar and the leading 240px.
+
+       THREE ELEMENTS, AND THE SPLIT IS LOAD-BEARING. The SHELL is fixed, full-viewport and carries NO
+       transform; the SCRIM and the PANEL are its children, and only the panel slides. Had the slide
+       stayed on the shell, the shell would have been a containing block for its own fixed scrim — the
+       exact trap `_sidebar.scss` §3c measured (`inset: 0` on the rail's scrim came out 240px wide, the
+       RAIL's width, instead of the viewport's) and had to work around with `100vw`/`100lvh` plus a
+       counter-translate. One level of indirection removes the whole problem: the scrim is a plain
+       `position: fixed; inset: 0`.
+
+       WHAT DID NOT CHANGE. Closed still means `display: none` — Safari 26 samples fixed, viewport-edge
+       elements to tint its status bar and toolbar from the CSS alone, off screen or not — and the
+       painted surface still sits on an absolutely positioned `::before` (which Safari ignores) rather
+       than on the panel itself. What DID change is that the two-step `.rg-filters-open` /
+       `.rg-filters-in` dance is gone: `display` is a discrete property, so `transition-behavior:
+       allow-discrete` is the supported way to mount and slide in one state change, and the popover's
+       own `@starting-style` gives the transition something to run from. */
+    #{$g} .rg-filter-drawer {
+        /* UA `[popover]` sheet, corrected: `inset: 0` is wanted, everything else is not. */
+        position: fixed; inset: 0; inline-size: auto; block-size: auto;
+        margin: 0; padding: 0; border-width: 0; overflow: visible;
+        color: inherit; background: none;
+        z-index: var(--rg-z-drawer);   /* only reachable in the Safari-26 exit window, see below */
+
+        /* `overlay` is declared and is NOT supported by Safari 26 (measured, `_sidebar.scss` §3b): it
+           is dropped as an unknown property there and the exit still animates, losing only the
+           top-layer guarantee for those 250ms — which is what the `z-index` above is for. */
+        transition: display .25s allow-discrete, overlay .25s allow-discrete;
+    }
+    #{$g} .rg-filter-drawer:not(:popover-open) { display: none; }
+    #{$g} .rg-filter-drawer:popover-open { display: block; }
+
+    /* The scrim: a DOM DESCENDANT rather than `::backdrop`, which is not hit-testable (measured in
+       runtime/sidebar.ts, and the tap fell through to whatever page control sat under it). Being inside
+       the popover is also what stops the UA's own light-dismiss firing, so it carries
+       `data-rg-filter-close` and MobileFilterDrawer closes the drawer explicitly — the same contract,
+       for the same reason, as `.rg-sidebar-scrim`. */
+    #{$g} .rg-filter-backdrop {
+        display: block; position: fixed; inset: 0; z-index: 0;
+        background: rgba(0,0,0,.45);
+        opacity: 0; transition: opacity .25s linear;
+    }
+    #{$g} .rg-filter-drawer:popover-open > .rg-filter-backdrop { opacity: 1; }
+    @starting-style {
+        #{$g} .rg-filter-drawer:popover-open > .rg-filter-backdrop { opacity: 0; }
+    }
+
+    #{$g} .rg-filter-panel {
+        display: flex; flex-direction: column;
+        position: absolute; inset: 0 0 0 auto; inline-size: min(86vw, 360px); z-index: 1;
+        overscroll-behavior: contain;
+        translate: 100% 0; transition: translate .25s ease;
+    }
+    #{$g} .rg-filter-panel::before { content: ''; position: absolute; inset: 0; z-index: -1; background: var(--rg-bg); box-shadow: -8px 0 24px rgba(0,0,0,.3); }
+    #{$g} .rg-filter-drawer:popover-open > .rg-filter-panel { translate: none; }
+    @starting-style {
+        #{$g} .rg-filter-drawer:popover-open > .rg-filter-panel { translate: 100% 0; }
+    }
+
+    /* Putting a drawer back after a region swap (applying a filter re-renders the whole region) must
+       not replay the slide-in: the drawer never went anywhere from the user's point of view. The swap
+       destroys the popover — an element leaving the document leaves the top layer with it — so the
+       replacement is re-shown by MobileFilterDrawer, which adds this class for the frame in which it
+       does so. It suppresses all three transitions, the discrete `display` one included. */
+    #{$g} .rg-filter-drawer.rg-no-anim,
+    #{$g} .rg-filter-drawer.rg-no-anim > .rg-filter-backdrop,
+    #{$g} .rg-filter-drawer.rg-no-anim > .rg-filter-panel { transition: none; }
+
+    /* All three, not just the panel: `transition: none` also disables the discrete `display`/`overlay`
+       transitions, so the drawer appears and disappears instantly — the correct reduced-motion answer,
+       and the same shape `_sidebar.scss` §4 uses for the rail. */
+    @media (prefers-reduced-motion: reduce) {
+        #{$g} .rg-filter-drawer,
+        #{$g} .rg-filter-backdrop,
+        #{$g} .rg-filter-panel { transition: none; }
+    }
+    #{$g} .rg-filter-head { display: flex; align-items: center; justify-content: space-between; padding: .85rem 1rem; padding-top: calc(.85rem + env(safe-area-inset-top)); border-bottom: 1px solid rgba(0,0,0,.1); font-weight: 600; font-size: .95rem; }
+    .dark #{$g} .rg-filter-head { border-bottom-color: rgba(255,255,255,.12); }
+    #{$g} .rg-filter-x { border: 0; background: none; color: inherit; cursor: pointer; opacity: .7; padding: .2rem; font-size: 1.05rem; }
+    #{$g} .rg-filter-body { display: block; flex: 1 1 auto; overflow-y: auto; padding: .25rem .5rem; }
+    #{$g} .rg-filter-actions { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .75rem 1rem; padding-bottom: calc(.75rem + env(safe-area-inset-bottom)); border-top: 1px solid rgba(0,0,0,.1); }
+    .dark #{$g} .rg-filter-actions { border-top-color: rgba(255,255,255,.12); }
+    #{$g} .rg-filter-done { padding: .4rem 1.1rem; min-width: auto; width: auto; }
+    /* Popups become stacked inline sections inside the drawer (override the floating popup styling). */
+    #{$g} .rg-filter-body .rg-pop { display: block; position: static; width: auto; box-shadow: none; border: 0; border-bottom: 1px solid rgba(0,0,0,.07); border-radius: 0; padding: .65rem .4rem; }
+    .dark #{$g} .rg-filter-body .rg-pop { border-bottom-color: rgba(255,255,255,.08); }
+    #{$g} .rg-filter-body .rg-pop .rg-pop-actions { justify-content: flex-start; }
+}
+
+@include rg-card-mode('.raptor-grid.rg-cards');
+/* Kept in sync with CARD_BREAKPOINT in grid/features/GridLayout.ts (640). The .98 keeps the two
+   halves from both applying at exactly 640px on fractional-DPI viewports. */
+@media (max-width: 639.98px) {
+    @include rg-card-mode('.raptor-grid.raptor-grid');
+}
+
+/* ================================================================================================
+   TOUCH TARGETS  (see ../_tap.scss for the token, the mixins and the no-pseudo-element rule)
+
+   Everything below grows a REAL layout box. Two flex neighbours can then never overlap: their
+   border boxes are disjoint by construction and the distance between them is exactly the
+   container's `gap`, which stays positive. The measured clearances are written next to each rule.
+
+   Selectors are doubled (`.raptor-grid.raptor-grid`) to reach specificity (0,3,x): that is what
+   `rg-card-mode` emits for the same properties, and this block sits after both of its includes,
+   so a tie is broken by source order in favour of these rules — in card mode too.
+   ================================================================================================ */
+
+/* ---- Table mode only ------------------------------------------------------------------------
+   The header row (sort button + filter funnel) only exists while the grid is a table: card mode
+   sets `thead { display: none }`. Scoped to >=640px AND :not(.rg-cards) so neither half of card
+   mode inherits the tighter cell padding these rules rely on. */
+@mixin rg-tap-table {
+    @include tap.media {
+        @media (min-width: 640px) {
+            @content;
+        }
+    }
+}
+
+@include rg-tap-table {
+    /* Cell inset drops 1rem -> .5rem on BOTH th and td so the header stays aligned with the body,
+       and so the 40px funnel fits a narrow column without leaving its own cell.
+
+       The two lead cells are excluded on purpose: .rg-expand-cell's .25rem is what makes its
+       3.25rem width equal 4 + 44 + 4 exactly, and .rg-sel-cell sets its own padding below to size
+       the checkbox's hit box. Without the exclusions these selectors — (0,4,1) against (0,3,1) —
+       would outrank both and silently break the containment those rules depend on. */
+    .raptor-grid.raptor-grid:not(.rg-cards) th:not(.rg-sel-cell):not(.rg-expand-cell),
+    .raptor-grid.raptor-grid:not(.rg-cards) td:not(.rg-sel-cell):not(.rg-expand-cell) { padding-left: .5rem; padding-right: .5rem; }
+    /* The vertical inset shrinks because .rg-sort now supplies the 44px itself: .25rem + 44 + .25rem
+       = 52px header row, against 38px before. Without this it would have been 60px. */
+    .raptor-grid.raptor-grid:not(.rg-cards) th:not(.rg-sel-cell) { padding-top: .25rem; padding-bottom: .25rem; }
+
+    /* Sort button: 21.8-24.8px -> 44px tall, full remaining cell width (flex: 1 1 auto). */
+    .raptor-grid.raptor-grid:not(.rg-cards) .rg-sort { @include tap.height; }
+
+    /* Funnel: 22.4x22.4 -> 40x44.
+       WHY 40 AND NOT 44 (the one place --rg-tap-min-tight is used): the funnel shares a
+       fixed-width table header cell with the column title and is `flex: 0 0 auto`, so it cannot
+       shrink. At the library's smallest column (data-rg-min = 60px, content box 60 - 16 = 44px)
+       the line measures title(0, it truncates) + gap(6.4) + funnel, i.e. the funnel's right edge
+       lands at 6.4 + 40 = 46.4px inside a 44px content box. It spills 2.4px into the cell's own
+       8px right padding and stops there — 2.6px short of the .rg-resize strip, which spans
+       [th_right - 3, th_right + 4] = [49, 56] in the same coordinates. At 44px wide the right
+       edge would be 50.4 and would sit UNDER the resize handle (z-index 3, touch-action: none),
+       which would then eat taps aimed at the funnel. 40x44 = 1760px^2 vs Apple's 1936px^2.
+       Clearance to the NEXT column's .rg-sort in that same worst case: it starts at
+       th_right + 8 (its padding-left) = 60, funnel ends at 46.4 -> 13.6px. No overlap.
+       On a normal 160px column the funnel is right-aligned in the content box: ends at 144,
+       resize strip starts at 149 -> 5px clearance. */
+    .raptor-grid.raptor-grid:not(.rg-cards) .rg-funnel {
+        width: var(--rg-tap-min-tight); min-width: var(--rg-tap-min-tight);
+        height: var(--rg-tap-min);
+    }
+    /* .rg-hd's gap deliberately STAYS at .4rem. Raising it here would push the funnel further
+       right, i.e. toward the resize handle — the opposite of what a gap increase does in the
+       pager below. It does not need raising: both children are in-flow boxes, so 6.4px of real
+       separation is already guaranteed. */
+}
+
+/* ---- Both modes ------------------------------------------------------------------------------ */
+@include tap.media {
+    /* Pagination arrows: 28x28 -> 44x44, the audit's most consistent violation (they are the same
+       size in table and card mode). Here the gap increase IS safe and useful — the pager sits in
+       a footer with slack, and nothing is pushed toward another control by widening it.
+       Clearance between two arrows: .25rem (4px) -> .375rem (6px), edge to edge, zero overlap.
+       Width check on the narrowest phone: 4 x 44 + 3 x 6 = 194px inside a 360px viewport minus
+       .rg-foot's 2 x 1rem padding = 328px available. Fits without wrapping. */
+    .raptor-grid.raptor-grid .rg-nav { min-width: var(--rg-tap-min); height: var(--rg-tap-min); }
+    .raptor-grid.raptor-grid .rg-pager { gap: .375rem; }
+    /* Page-size select in the same footer. .rg-foot-cell keeps gap .5rem (8px) to its label. */
+    .raptor-grid.raptor-grid .rg-select { @include tap.height; }
+    .raptor-grid.raptor-grid .rg-selbar-clear { @include tap.square; }
+
+    /* Master-detail chevron: 24x24 -> 44x44, and its column widens 2.5rem -> 3.25rem so the
+       button still fits inside the cell: .25rem + 44 + .25rem = 52px = 3.25rem exactly.
+       Clearance to the cell on its right: 4px (own padding) + that cell's own padding-left
+       (.5rem on a data cell, .7rem on .rg-sel-cell below). In card mode the column width is
+       `auto !important` from rg-card-mode, so only the button size applies there. */
+    .raptor-grid.raptor-grid .rg-expand { width: var(--rg-tap-min); height: var(--rg-tap-min); }
+    .raptor-grid.raptor-grid .rg-col-expand,
+    .raptor-grid.raptor-grid th.rg-expand-cell,
+    .raptor-grid.raptor-grid td.rg-expand-cell { width: 3.25rem; }
+
+    /* Row-select checkbox — THE ONE PSEUDO-ELEMENT HIT BOX in this package, because the markup is
+       a bare `<td class="rg-sel-cell"><input type="checkbox"></td>` with no wrapping <label>, so
+       there is nothing else to grow: painting a 44px checkbox would be absurd, and the cell's own
+       padding is not clickable.
+
+       It is safe here only because the box is sized to land inside its own table cell:
+         horizontal  cell width 2.75rem = 44px, checkbox centred -> 22px from centre to cell edge;
+                     hit box half-width 22px -> flush with the cell edge, zero bleed.
+         vertical    cell padding-block .9rem -> box height 14.4 + 16 + 14.4 = 44.8px, so 22.4px
+                     from centre to edge vs a 22px half-height -> 0.4px inside.
+       Table cells are disjoint boxes, so the hit box of the row above/below (row pitch 44.8 + 1px
+       border = 45.8px) clears this one by 1.8px, and the cell to the left (.rg-expand-cell)
+       clears it by its own 4px padding. In card mode the cell is inline-block: centre to edge is
+       .7rem + 8 = 19.2px, so the box bleeds 2.8px past the cell, into the neighbouring
+       .rg-expand-cell's .45rem (7.2px) padding -> 4.4px clearance to the expand button. */
+    .raptor-grid.raptor-grid th.rg-sel-cell,
+    .raptor-grid.raptor-grid td.rg-sel-cell { padding: .9rem .7rem; }
+    .raptor-grid.raptor-grid .rg-sel-row::before,
+    .raptor-grid.raptor-grid .rg-sel-all::before {
+        content: ''; position: absolute; top: 50%; left: 50%;
+        width: var(--rg-tap-min); height: var(--rg-tap-min);
+        transform: translate(-50%, -50%);
+    }
+
+    /* Filter popup internals — stacked full-width rows inside .rg-pop, no horizontal neighbours;
+       vertically adjacent rows have no gap, so their boxes touch and never overlap. */
+    .raptor-grid.raptor-grid .rg-pop-check { @include tap.row; }
+    .raptor-grid.raptor-grid .rg-pop-op,
+    .raptor-grid.raptor-grid .rg-pop-input { @include tap.height; }
+    /* Alone in .rg-pop-actions (justify-content: flex-end) — no neighbour to collide with. */
+    .raptor-grid.raptor-grid .rg-pop-clear { @include tap.square; }
+
+    /* Mobile filter drawer. .rg-filter-x sits opposite the title in a space-between head, so its
+       only neighbour is non-interactive text. .rg-filter-actions keeps gap .5rem (8px) between
+       "clear all" and "done", both now 44 tall and in flow. */
+    .raptor-grid.raptor-grid .rg-filter-x { @include tap.square; }
+    .raptor-grid.raptor-grid .rg-filter-fab { @include tap.height; }
+    .raptor-grid.raptor-grid .rg-filter-done { @include tap.height; }
+}
+
+/* Hands the FAB's reserved footprint back to a grid NESTED in a detail panel, whose FAB is rendered
+   but never painted (`.raptor-grid .rg-detail .rg-filter-fab { display: none !important }`).
+
+   TWO rules put it there and this one selector answers both: the nested region's own copy of the
+   reservation (its markup contains a `.rg-filter-fab`, so `:has()` matches), and the OUTER region's
+   copy, whose `.rg-foot` is an unrestricted descendant and so reaches into the inner footer as well.
+   Both weigh (0,4,0); `.rg-detail` + three `.raptor-grid` + `.rg-foot` reaches (0,5,0) and outranks
+   them without touching either. It stays BELOW the `[data-rg-filter-entry]` block at the end of the
+   file, which is (0,6,0) — they set the same value, so the order between them is moot either way.
+
+   Every `.rg-foot` under a `.rg-detail` under a `.raptor-grid` belongs to a nested grid by
+   construction, which is what makes the loose descendant chain safe here. */
+@mixin nested-fab-give-back {
+    .rg-detail .raptor-grid.raptor-grid.raptor-grid .rg-foot { padding-bottom: .625rem; }
+}
+
+/* The filter FAB is `position: fixed` bottom-right and the pager is `justify-content: flex-end`
+   in a footer that, in card mode, scrolls with the page (rg-card-mode sets `height: auto`, which
+   drops fitGrid's viewport pinning). They already shared that corner; growing .rg-nav from 28 to
+   44px makes the collision certain, so reserve the FAB's footprint under the footer.
+
+   FAB geometry after the min-height above: bottom = 1rem + safe-area, height = 44px, so its top
+   edge sits 16 + 44 + safe = 60 + safe px above the viewport bottom. The reservation is
+   .625rem (the footer's own padding) + 44 + 1rem = 70px + safe, i.e. when the page is scrolled to
+   its very end the last pager button clears the FAB by 10px.
+
+   :has() keeps the space out of grids that render no FAB at all (it is already used above for
+   `tr[data-row-key]:has(.rg-expand)`, so support is assumed). Emitted twice, mirroring
+   rg-card-mode's own two triggers.
+
+   PRESENCE IS NOT VISIBILITY. `:has()` can only ask whether the button was RENDERED, and the two rules
+   that stop it painting both leave the markup in place: `[data-rg-filter-entry]` (handled at the end of
+   this file) and `.rg-detail .rg-filter-fab` (a grid nested in a detail panel — one filter entry per
+   screen). Each of those therefore has to hand the reservation back explicitly, or the pager sits on
+   60px of dead space with nothing to clear. The nested give-back is the rule below. */
+@include tap.media {
+    .raptor-grid.rg-cards:has(.rg-filter-fab) .rg-foot {
+        padding-bottom: calc(.625rem + var(--rg-tap-min) + 1rem + env(safe-area-inset-bottom));
+    }
+    @include nested-fab-give-back;
+}
+@media (max-width: 639.98px) {
+    .raptor-grid.raptor-grid:has(.rg-filter-fab) .rg-foot {
+        padding-bottom: calc(.625rem + var(--rg-tap-min) + 1rem + env(safe-area-inset-bottom));
+    }
+    @include nested-fab-give-back;
+}
+
+/* Hover-reveal is dead weight on a finger: a coarse pointer never produces the `tr:hover` that
+   makes .rg-sel-row visible, so the 44px hit box above would be invisible until something is
+   already selected. Coarse-pointer only — a mouse in a narrow window still gets the reveal. */
+@include tap.media-coarse {
+    .raptor-grid .rg-sel-row,
+    .raptor-grid .rg-sel-all { opacity: 1; }
+}
+
+/* ================================================================================================
+   THE FILTER DRAWER OPENED FROM THE PAGE SHELL   (RaptorGridFilterEntry.PageChrome)
+
+   The region prints `data-rg-filter-entry` when the page has taken the opener over. Everything the
+   drawer needs stays exactly where it was — the drawer, the backdrop, "clear all", the FAB markup
+   itself; the only things that change are that the FAB stops painting and the footprint reserved
+   for it under the pager is given back.
+
+   MUST STAY LAST IN THE FILE. Both rules override earlier ones — `rg-card-mode`'s
+   `.rg-filter-fab { display: inline-flex }` (two includes, lines ~406/410) and the reservation block
+   directly above — and both of those already climb to (0,3,0)/(0,4,0). The triple class here reaches
+   (0,6,0) so the outcome does not depend on which include ran last.
+
+   WHY `max-width: 991.98px` AND NOT THE CARD-MODE MIXIN. Card mode has two triggers, and one of them
+   (`.rg-cards`, set by GridLayout.ts from the CONTAINER's width) can fire on a wide viewport inside a
+   narrow column. The menu button is a phone affordance and is `display: none` from 992px up, so a rule
+   that only consulted the mark would take the FAB away from a card-mode grid whose replacement opener
+   is not on screen — a grid with no way to filter at all. Keyed on the viewport, the two always agree.
+
+   WHY THE CHILD CHAIN AND NOT A DESCENDANT SELECTOR. Measured: written as
+   `.raptor-grid[data-rg-filter-entry] .rg-foot`, an outer grid's mark also collapsed the footer of a
+   grid NESTED in one of its detail rows (its reservation went 70px -> 10px while its own FAB was still
+   the only opener it had). `> .rg-form >` is the region's own form and nothing else's.
+   ================================================================================================ */
+@media (max-width: 991.98px) {
+    .raptor-grid.raptor-grid.raptor-grid[data-rg-filter-entry] > .rg-form > .rg-filter-fab {
+        display: none;
+    }
+
+    /* Back to the footer's own padding — the plain value from line 167, i.e. what the footer measured
+       before the FAB existed. The reservation above is keyed on `:has(.rg-filter-fab)`, which tests
+       PRESENCE and not visibility, so hiding the button alone leaves 60px of dead space under the
+       pager (measured). This is the half of the change the user actually reported. */
+    .raptor-grid.raptor-grid.raptor-grid[data-rg-filter-entry] > .rg-form > .rg-foot {
+        padding-bottom: .625rem;
+    }
+}
+
+/* ------------------------------------------------------------------------------------------------
+   The page's menu row (`<RaptorGridFilterButton>`).
+
+   It is page markup, NOT a `.raptor-grid` descendant, so none of the region's own rules reach it —
+   including `.raptor-grid .rg-ico`, which is why the icon is drawn here instead of reusing the
+   `rg-ico` glyph classes.
+
+   `display: none` is the BASE and the mobile band is the exception, so a desktop render can never
+   show the row even for the frame before a stylesheet's media queries are consulted. Inside the open
+   menu `_page-chrome.scss` stretches every tools child to the full row width and gives it the touch
+   floor; the sizing here is what the button looks like on a phone whose page shell did NOT project
+   into the bar, where the tools box stays in the page header instead.
+   ------------------------------------------------------------------------------------------------ */
+.rg-gridfilter-entry {
+    display: none;
+    align-items: center;
+    gap: .5rem;
+    box-sizing: border-box;
+    min-height: var(--rg-tap-min, 44px);
+    padding: .45rem .7rem;
+    border: 1px solid var(--rg-border);
+    border-radius: .375rem;
+    background: var(--rg-bg);
+    color: var(--rg-fg);
+    font: inherit;
+    font-size: .875rem;
+    font-weight: 500;
+    line-height: 1.2;
+    text-align: start;
+    cursor: pointer;
+}
+
+@media (max-width: 991.98px) {
+    .rg-gridfilter-entry { display: inline-flex; }
+}
+
+.rg-gridfilter-ico {
+    flex: 0 0 auto;
+    width: 1.05em;
+    height: 1.05em;
+    background-color: currentColor;
+    /* Same funnel as `.rg-ico-filter` (line 221); inlined because that rule is region-scoped. */
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 5h18v2H3zM6 11h12v2H6zM10 17h4v2h-4z'/%3E%3C/svg%3E") no-repeat center / contain;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 5h18v2H3zM6 11h12v2H6zM10 17h4v2h-4z'/%3E%3C/svg%3E") no-repeat center / contain;
+}
+
+/* Takes the slack so the badge sits at the trailing edge of the row, wherever the row's width
+   comes from. */
+.rg-gridfilter-label { flex: 1 1 auto; }
+
+/* The active-filter count, mirrored from the region by `runtime/grid-filter-entry.ts`. */
+.rg-gridfilter-count {
+    flex: 0 0 auto;
+    display: inline-block;
+    min-width: 1.15rem;
+    height: 1.15rem;
+    padding: 0 .3rem;
+    border-radius: 9999px;
+    background: var(--rg-accent);
+    color: #fff;
+    font-size: .7rem;
+    font-weight: 700;
+    line-height: 1.15rem;
+    text-align: center;
+}
+
+/* The `display` above out-specifies the UA's `[hidden] { display: none }`, so the empty badge has to
+   be hidden explicitly — otherwise an unfiltered grid shows a bare accent dot. */
+.rg-gridfilter-count[hidden] { display: none; }

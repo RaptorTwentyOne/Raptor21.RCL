@@ -1,10 +1,14 @@
 name: CI
 
+# `master`, not `main`: this repository's default branch is master (origin/HEAD -> origin/master) and no
+# branch named main has ever existed, so both triggers below matched nothing and CI had never run on a
+# push or a pull request — only the manual workflow_dispatch could start it. Every gate in this file,
+# including the committed-bundle freshness check, was therefore silently absent from code review.
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
 
 jobs:

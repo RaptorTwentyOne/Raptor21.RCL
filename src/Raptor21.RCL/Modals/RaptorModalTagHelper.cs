@@ -58,7 +58,12 @@ public sealed class RaptorModalTagHelper : TagHelper
     {
         var titleId = $"rg-modal-title-{context.UniqueId}";
 
-        output.TagName = "div";
+        // A NATIVE <dialog>, not a <div>: Client/src/modal/ModalComponent.ts opens it with showModal(),
+        // which is the only way to sit above the sidebar rail. The rail is a popover, i.e. in the top
+        // layer, and no z-index in the normal layer reaches the top layer — measured, a probe at
+        // z-index 2147483647 still hit-tested underneath an open rail. It renders CLOSED and the
+        // stylesheet keeps it that way until showModal() runs, so nothing paints in the normal layer.
+        output.TagName = "dialog";
         output.TagMode = TagMode.StartTagAndEndTag;
         output.Attributes.SetAttribute("class", "rg-modal");
         output.Attributes.SetAttribute("data-rg-component", "modal");

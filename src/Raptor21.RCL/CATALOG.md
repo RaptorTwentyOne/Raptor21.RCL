@@ -60,7 +60,7 @@ taşıyıcı değildir — ayrım bu.
 
 **Veri:** `RaptorGrid` · `RaptorColumn` · `RaptorGridRegion` · `RaptorFilter`/`RaptorFilterField`/`RaptorFilterPanel`
 
-**Düzen kabuğu:** `RaptorSidebar` · `RaptorAppRoot`
+**Düzen kabuğu:** `RaptorSidebar` · `RaptorAppRoot` · `RaptorPageChrome`/`RaptorPageAction`/`RaptorPageChromeOutlet`
 
 **Grafik:** `RaptorChart` — konteyner + durum slotları. Grafik **kurmaz**, seçenek **üretmez**.
 
@@ -71,7 +71,14 @@ taşıyıcı değildir — ayrım bu.
 `RaptorSidebar` kenar çubuğunun **iskeletidir**, görünüşü değil. Beş yuva alır (`Brand`, `Menu`, `Bottom`,
 toggle içeriği, `ScrollId`) ve `hx-preserve="true"` ile boost'lu gezinmede aynı DOM düğümünün korunmasını
 garanti eder — kaydırma konumu ve açık/kapalı durumu bu yüzden hayatta kalır. `RaptorAppRoot` boost'lu
-takasın hedefi olan `<div id="app-root">`'u üretir ve hiçbir `rg-` sınıfı yaymaz.
+takasın hedefi olan `<div id="app-root">`'u üretir ve hiçbir `rg-` sınıfı yaymaz; 0.2.0'dan beri üzerinde
+`hx-history-elt` de taşır (history snapshot'ı bu bölgeye daraltır — yoksa htmx `<body>`'yi anlık görüntüler).
+
+⚠️ **0.2.0: açık/kapalı artık native `popover`'ın.** Rail koşulsuz `popover="auto"` taşır; durum seçicisi
+`:popover-open`, Esc/light-dismiss/focus dönüşü UA'nın. Sunumu `RaptorSidebarMode` seçer — banda göre
+`MobileMode` (varsayılan `Drawer`) ve `DesktopMode` (varsayılan `Docked`). Host'un kendi menü script'i
+sınıf/`data-toggled` ile durum tutuyorsa popover ile çakışır: **sil**. İlk çocuk artık `.rg-sidebar-scrim`
+olduğu için `:first-child` seçicileri kayar.
 
 İkisi de menü içeriğine, renklere veya markaya karar vermez: renkler, kabuk sınıfları ve menü ağacı host'ta
 kalır. Bileşen mekanizmayı (koruma, toggle, portal) taşır, görünüşü çağıran seçer.
@@ -161,12 +168,16 @@ Varsayılan bekleme süreleri tipe bağlı: success 4s · info 5s · warning 6s 
 kadar)**. `items` verilirse süre yine 0 olur — okunacak bir liste kendi kendine kaybolmamalı.
 
 🔴 **`confirm()` `hx-confirm`'in diyaloğu DEĞİLDİR.** `runtime/confirm.ts` gerçek bir `.rg-modal` açar ve modal
-stack'ine katılır; bu ise imperatif kurulur ve **zaten açık bir modalın üstünde** durabilmek zorundadır
-(z-index 2147483600).
+stack'ine katılır; bu ise imperatif kurulur ve **zaten açık bir modalın üstünde** durabilmek zorundadır.
+0.2.0'dan beri bunu bir z-index ile değil, native `<dialog>.showModal()` ile yapar — **top layer**. Sıralama
+artık AÇILMA SIRASINA göredir; eski `z-index: 2147483600` gitti ve hiçbir sayı top layer'a ulaşmaz.
 
-⚠️ **Yüzeyler `document.body`'nin çocuğudur, bir modal konteynerinin değil.**
-`ModalComponent.applyInertBelow()` `document.body.children` üzerinde gezip en üstteki diyaloğu içermeyen her
-çocuğu `inert` işaretler, dolayısıyla bir modal açıkken toast yığını (o an zaten duruyorsa) inert olur.
+⚠️ **Toast yığını açık bir diyaloğun İÇİNE taşınır.** `showModal()` diyaloğun torunu olmayan her şeyi inert
+yapar, dolayısıyla `<body>` altında bırakılan bir toast **görünür ama ölü** olur — ölçüldü; `duration: 0`
+olan hata toast'ları kullanıcının kapatamayacağı hale gelir. Bu yüzden `.rg-toast-stack` `popover="manual"`
+taşır ve `core/dom.ts` onu o an top layer'da olan host'a evlat edindirir. (0.2.0 öncesi mekanizma —
+`ModalComponent.applyInertBelow()`'un `document.body.children` üzerinde gezmesi — **kaldırıldı**;
+inert'liği artık UA diyaloğun kendi alt ağacına göre belirliyor.)
 
 ⚠️ **İkon adı olduğu gibi sınıf olarak basılır** (`RaptorButton`'ın `Icon` parametresiyle aynı sözleşme): glif
 host'un ikon font'undan gelir, kütüphane yalnızca adını yazar.
