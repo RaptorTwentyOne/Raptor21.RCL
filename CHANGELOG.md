@@ -11,7 +11,12 @@ default only. Tag and heading below must agree.
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-08-01
+## [0.2.0-preview.1] - 2026-08-02
+
+Shipping as a **preview**, like `0.1.0-preview.1` before it: this is the first release of the
+top-layer overlay work and it has been exercised by exactly one consumer. The contract changes below
+are the ones worth reviewing against a second consumer before `0.2.0` proper is cut. Nothing here is
+expected to change — the preview suffix buys the chance to find out that it should.
 
 Every overlay this library opens now lives in the browser's **top layer** — native `<dialog>` and
 native `popover` — instead of in the normal layer at a `z-index`. That single change is the reason
@@ -23,7 +28,7 @@ The measurement behind it, repeated across the components: with the sidebar rail
 popover, a `<body>` child probe at `z-index` 300, 400, 500, 600, 700 **and 2147483647** was returned
 *underneath* the rail by `elementsFromPoint` in all six cases.
 
-### Why 0.2.0 (SemVer rationale)
+### Why 0.2.0-preview.1 (SemVer rationale)
 
 Under SemVer, `0.x` may carry breaking changes in a minor bump, and this release uses that
 allowance rather than pretending the surface is stable. It is *not* a patch release: the rendered
@@ -400,5 +405,5 @@ that has to sit near one of ours *in the normal layer*.
 `--rg-z-toast` or `--rg-z-confirm` moves nothing this library renders. If you need to sit above one
 of those surfaces, put yours in the top layer too.
 
-[Unreleased]: https://github.com/RaptorTwentyOne/Raptor21/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/RaptorTwentyOne/Raptor21/releases/tag/v0.2.0
+[Unreleased]: https://github.com/RaptorTwentyOne/Raptor21.RCL/compare/v0.2.0-preview.1...HEAD
+[0.2.0-preview.1]: https://github.com/RaptorTwentyOne/Raptor21.RCL/releases/tag/v0.2.0-preview.1
