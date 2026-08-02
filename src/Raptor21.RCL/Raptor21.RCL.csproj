@@ -25,7 +25,7 @@
          and passes -p:Version to both build and pack, which overrides this. It is kept in step with
          CHANGELOG.md's newest heading so a `dotnet pack` run by hand, and the assembly version a
          developer debugging against a project reference sees, name the release they are actually on. -->
-    <Version>0.2.0</Version>
+    <Version>0.2.0-preview.1</Version>
     <Description>Server-rendered grid and filter components for ASP.NET Core Razor Pages, driven by htmx.</Description>
     <PackageTags>razor;razor-pages;grid;filter;htmx;rcl</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
