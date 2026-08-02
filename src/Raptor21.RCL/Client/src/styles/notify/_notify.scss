@@ -7,8 +7,13 @@
    The palette is literal grey/green/red/amber/blue rather than the --rg-* tokens the rest of this package
    uses: a toast is a flat status surface that does not follow the host's brand accent.
 
-   The two z-indexes (2147483000 for the stack, 2147483600 for the confirm above it) are set inline in the
-   script, because their only meaning is the comparison between them.
+   NEITHER SURFACE CARRIES A Z-INDEX ANY MORE. Both are in the TOP LAYER — the stack as a
+   `popover="manual"`, the confirm as a `<dialog>` opened with `showModal()` — and z-index does not
+   order the top layer against anything, in either direction. They used to hold `--rg-z-toast` (600) and
+   `--rg-z-confirm` (700) and both numbers were dead: measured with the sidebar rail (a popover) open,
+   the toast's own centre hit-tested to `A#raillink1` and the confirm's centre to `DIV#sidebar-scroll`,
+   i.e. both were behind the drawer. What orders them now is opening order, which is why NotifyManager
+   re-shows the stack on every toast. See core/dom.ts.
 
    `.rg-toast__close` / `.rg-toast__copy` / `.rg-ask__cancel` / `.rg-ask__ok` are querySelector hooks in the
    same module; the styles hang off those names so the event wiring and the presentation cannot drift
@@ -16,17 +21,54 @@
 
 /* ---- Toast stack -------------------------------------------------------------------------- */
 
+/* The container is created on the first toast and then kept for the life of the document, so it spends
+   most of its time empty. It is deliberately a bare fixed box — no background, no backdrop-filter —
+   because Safari 26 (iOS 26) tints its status bar from the CSS of fixed elements near the viewport top,
+   and `pointer-events: none` buys no exemption there. The painted surfaces are the toasts themselves,
+   which are ordinary in-flow children. `:empty` takes the box out of the render tree entirely between
+   toasts; the safe-area offset already keeps it clear of the sampled band, and this removes the
+   question. */
+/* UA popover neutralisation, the direct counterpart of `layout/_sidebar.scss` §1 and
+   `modal/_modal.scss`. `:where()` zeroes specificity so these lose to `.rg-toast-stack` (0,1,0) below
+   and to any consumer rule, while still beating the user-agent origin they exist to undo. Only the
+   properties the class itself does NOT restate are listed: UA `inset: 0` would pin the stack to all four
+   edges and defeat the `top`/`right` below, `margin: auto` would centre it, and `width/height:
+   fit-content` would fight the explicit `width`. */
+:where(.rg-toast-stack[popover]) {
+  inset: auto;
+  margin: 0;
+  padding: 0;
+  border-width: 0;
+  background: none;
+  color: inherit;
+  overflow: visible;
+  block-size: auto;
+  inline-size: auto;
+}
+
 .rg-toast-stack {
   pointer-events: none;
   position: fixed;
   top: 1rem;
-  right: 1rem;
+  top: calc(1rem + env(safe-area-inset-top));
+  /* `--rg-scroll-gutter` is what the page scroll lock had to take off the page's width, and it is added
+     here because this box is pinned to the VIEWPORT: hiding the page's overflow removes a classic
+     scrollbar and widens the viewport under everything that is `position: fixed`, while the lock's own
+     `padding-right` on <body> only answers for normal-flow content. Measured (Chrome 150, real bundles,
+     /roles, the app's 5px `::-webkit-scrollbar`): with a toast on screen and a modal then taking the
+     lock, `documentElement.clientWidth` went 1795 → 1800 and this stack moved x 1459 → 1464, returning
+     to 1459 on unlock. A toast is the one surface that is routinely ALREADY on screen when a dialog
+     opens (`data-rg-top-layer-guest`), so it is the one that visibly jumps. See `--rg-scroll-gutter` in
+     ../_tokens.scss; 0px everywhere overlay scrollbars are used, i.e. on every phone. */
+  right: calc(1rem + var(--rg-scroll-gutter, 0px));
   display: flex;
   width: 20rem;
   max-width: calc(100vw - 2rem);
   flex-direction: column;
   gap: .5rem;
 }
+
+.rg-toast-stack:empty { display: none; }
 
 .rg-toast {
   pointer-events: auto;
@@ -192,7 +234,29 @@
 /* ---- Imperative confirm dialog ------------------------------------------------------------- */
 
 /* Separate from `.rg-modal`, and from the `.rg-modal` that runtime/confirm.ts builds for hx-confirm: this
-   one is created from a Promise and renders above an already-open modal. */
+   one is created from a Promise and renders above an already-open modal. Same ELEMENT though — a native
+   `<dialog>` — so it needs the same UA neutralisation, and for the same reasons spelled out in
+   `modal/_modal.scss`. The scrim is written inline by NotifyManager, which is why `background` is left
+   for it to supply rather than declared here. */
+:where(dialog.rg-ask-overlay) {
+  margin: 0;
+  border-width: 0;
+  padding: 0;                 /* `.rg-ask-overlay` restates its own 1rem below */
+  max-inline-size: none;
+  max-block-size: none;
+  inline-size: auto;
+  block-size: auto;
+  color: inherit;
+  overflow: visible;
+}
+
+/* Never painted in the normal layer: shown with `showModal()` in the same statement it is appended, so
+   the only state a closed one can be in is "on its way out". */
+dialog.rg-ask-overlay:not([open]) { display: none; }
+
+/* Emptied so it cannot double up with the inline scrim NotifyManager writes on the element itself. */
+dialog.rg-ask-overlay::backdrop { background: none; }
+
 .rg-ask-overlay {
   position: fixed;
   inset: 0;

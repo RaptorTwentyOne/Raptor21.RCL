@@ -77,6 +77,7 @@ public sealed class RaptorGridBuilder(
             Include = view.Include,
             Compact = view.Compact,
             Selectable = view.Selectable,
+            FilterEntry = view.FilterEntry,
             CanEdit = view.EditPermission is not null
                       && await authorization.HasPermissionAsync(userId, view.EditPermission, ct),
             SortField = sort?.ColumnName,

@@ -1,0 +1,84 @@
+/* ============================================================================================
+   Touch targets — the single place this library decides how big a finger-operated control is.
+
+   WHY A MODULE AND NOT 40 LOCAL PATCHES
+   Every control in this package was sized for a mouse: 22–32 px squares, text buttons with
+   .1–.25rem padding, 16 px checkboxes. On a coarse pointer that is a 45–65 % miss against the
+   44 px floor. Patching each rule in place would scatter the number across a dozen files and
+   guarantee the next control lands wrong, so the floor lives here as one token plus a handful
+   of mixins, and every component reads it.
+
+   WHY REAL BOXES, NEVER AN INVISIBLE ::before/::after
+   The usual trick — leave the control small and stretch its hit area with an absolutely
+   positioned transparent pseudo-element — is wrong for this library, because the controls that
+   are too small are the ones that sit RIGHT NEXT to each other:
+
+     .rg-sort  and .rg-funnel  share one .rg-hd flex line, separated by gap: .4rem  (6.4 px)
+     .rg-nav   pager arrows    sit in .rg-pager,          separated by gap: .25rem (4 px)
+
+   An out-of-flow 44 px box centred on a 22 px control reaches 11 px past each edge — more than
+   twice those gaps — so the two hit areas would overlap and the top one (later in paint order)
+   would swallow taps meant for its neighbour. Enlarging the LAYOUT box instead (min-height /
+   min-width / width) reflows the line: flex items are disjoint by construction, so the distance
+   between two neighbours stays exactly the gap and can never go negative. Every rule below
+   therefore grows a real box.
+
+   The one exception is documented at its use site (.rg-sel-row / .rg-sel-all in grid/_grid.scss):
+   a bare <td><input type=checkbox></td> with no wrapping <label>, where the pseudo-element is
+   sized to land exactly inside its own table cell and the cell is grown to match, so the hit box
+   still cannot reach a neighbour.
+
+   BREAKPOINT
+   Two conditions, OR'd. `(hover: none) and (pointer: coarse)` is the honest test — it is the
+   finger that needs 44 px, not the viewport — and it is the query this package already uses for
+   the iOS zoom guard in forms/_form.scss and forms/_select.scss. The width test is the host
+   shell's mobile breakpoint, kept as a `!default` Sass variable so a host with a different shell
+   can `@use 'tap' with ($viewport-max: …)`; it catches a phone-sized layout driven by a mouse
+   (device emulation, a narrow desktop window in the host's mobile shell), where the controls are
+   laid out for a phone and should measure like one.
+   ============================================================================================ */
+
+/* Host shell's mobile breakpoint. 991.98 rather than 992 so this and a host's own
+   `min-width: 992px` rule never both apply on a fractional-DPI viewport. */
+$viewport-max: 991.98px !default;
+
+/* Wraps a block in the touch-device test. Used at top level only — never nested in another
+   @media, so the two halves of the condition stay independent. */
+@mixin media {
+    @media (hover: none) and (pointer: coarse), (max-width: $viewport-max) {
+        @content;
+    }
+}
+
+/* Coarse pointer ONLY, no viewport half: for rules that answer "a finger is doing this" and
+   would be wrong for a mouse in a narrow window (e.g. hover-reveal affordances). */
+@mixin media-coarse {
+    @media (hover: none) and (pointer: coarse) {
+        @content;
+    }
+}
+
+/* A control that should be at least $size in BOTH axes and centre its glyph.
+   inline-flex + centring is what turns a bare icon button into a box with a real hit area. */
+@mixin square($size: var(--rg-tap-min)) {
+    min-width: $size;
+    min-height: $size;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* A full-width row (list item, option, checkbox label): only the height needs raising; the row
+   already spans its container horizontally. `display: flex` + centring keeps a one-line label
+   vertically centred in the taller box instead of pinned to the top. */
+@mixin row($size: var(--rg-tap-min)) {
+    min-height: $size;
+    display: flex;
+    align-items: center;
+}
+
+/* Height only — for controls that are already flex/inline-flex and already wide enough
+   (buttons with text, inputs, selects). Touches nothing but the vertical floor. */
+@mixin height($size: var(--rg-tap-min)) {
+    min-height: $size;
+}

@@ -1,4 +1,6 @@
 @use 'tokens';
+@use 'layout/page-chrome';
+@use 'layout/sidebar';
 @use 'grid/grid';
 @use 'filter/filter';
 @use 'modal/modal';

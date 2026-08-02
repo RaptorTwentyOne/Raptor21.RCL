@@ -1,5 +1,7 @@
 import { RaptorComponent } from '../core/Component'
 import { positionAt, trackAnchor } from '../core/anchor'
+import { TOP_LAYER_CLAIM_EVENT } from '../core/dialog-stack'
+import { markPortalled, portalTarget } from '../core/dom'
 
 interface Choice {
     value: string
@@ -7,6 +9,10 @@ interface Choice {
     disabled: boolean
     group: string | null
 }
+
+/** Panels currently owned by a live instance. Anything else in `<body>` bearing the panel class is an
+ * orphan left behind by an instance whose teardown never ran, and is safe to sweep on the next mount. */
+const livePanels = new Set<HTMLElement>()
 
 /**
  * An accessible combobox that enhances a real `<select>`.
@@ -49,6 +55,24 @@ export class SelectComponent extends RaptorComponent {
     }
 
     mount(): void {
+        // A history restore resurrects markup that was enhanced when the snapshot was taken: the
+        // serialised .rg-select-button comes back inside the wrapper, the registry re-mounts the fresh
+        // element, and without this cleanup the new instance would build a second button next to the
+        // stale one. Same story when a wrapper is detached and re-attached — destroy() removes the
+        // panel but the button stays in the subtree. Orphaned body-level panels (an instance whose
+        // teardown never ran) are swept alongside, as defence in depth.
+        //
+        // The sweep is still scoped to `<body>`'s own children, and it is now an INCOMPLETE net: since
+        // `portalTarget`, an open panel can be parented into an open popover instead, and an instance
+        // whose teardown never ran could strand one there. Left deliberately: `destroy()` removes the
+        // panel from wherever it is parented, so this only ever mattered for teardowns that did not
+        // happen at all, and the alternative — a document-wide `querySelectorAll` on every select mount,
+        // on every page — costs more than the failure it would catch. A stranded panel is `hidden`.
+        for (const remnant of this.el.querySelectorAll(':scope > .rg-select-button')) remnant.remove()
+        for (const panel of document.body.querySelectorAll<HTMLElement>(':scope > .rg-select-panel')) {
+            if (!livePanels.has(panel)) panel.remove()
+        }
+
         const select = this.find<HTMLSelectElement>('select')
         if (!select) {
             console.warn('[raptor21] data-rg-component="select" needs a <select> inside it')
@@ -109,6 +133,10 @@ export class SelectComponent extends RaptorComponent {
         this.panel = document.createElement('div')
         this.panel.className = 'rg-select-panel'
         this.panel.hidden = true
+        // See core/dom.ts `PORTAL_MARK`: this node's parent is decided by `portalTarget`, so a host with
+        // layout rules for its own children (the page shell's overflow menu, measured) must be able to
+        // tell it apart from the controls the author really put in that box.
+        markPortalled(this.panel)
 
         this.list = document.createElement('div')
         this.list.className = 'rg-select-list'
@@ -129,10 +157,18 @@ export class SelectComponent extends RaptorComponent {
 
         this.panel.appendChild(this.list)
         this.el.appendChild(this.button)
-        // The panel is portalled to <body>: inside the wrapper it would be clipped by any scrolling
+        // The panel is portalled out of the wrapper: inside it, it would be clipped by any scrolling
         // ancestor — a grid cell, a modal body — which is the usual reason a dropdown appears cut off.
-        document.body.appendChild(this.panel)
-        this.onDestroy(() => this.panel.remove())
+        // `portalTarget` and not a bare `<body>`: when an ancestor is showing as a popover, <body> is
+        // BELOW the top layer and the panel would be painted under it (see core/dom.ts for the
+        // measurements). `openPanel` recomputes it, because whether that ancestor is open changes
+        // between opens while this runs exactly once.
+        portalTarget(this.el).appendChild(this.panel)
+        livePanels.add(this.panel)
+        this.onDestroy(() => {
+            livePanels.delete(this.panel)
+            this.panel.remove()
+        })
 
         this.bind(this.button, 'click', () => this.toggle())
         this.bind(this.button, 'keydown', event => this.onKeydown(event as KeyboardEvent))
@@ -141,6 +177,34 @@ export class SelectComponent extends RaptorComponent {
             if (!this.open) return
             const target = event.target
             if (target instanceof Node && !this.panel.contains(target) && !this.el.contains(target)) this.closePanel()
+        })
+
+        // An ancestor popover closing takes the panel off screen with it (the closed subtree is
+        // `display: none`), so this component must not be left believing it is still open: the stale
+        // `open` flag would swallow the next click on the button as a close, and `trackAnchor` would go
+        // on repositioning a panel nobody can see. capture: true because `toggle` does not bubble;
+        // `[popover]`-only because `<details>` fires the same event shape and is not an owner here.
+        this.onDocument('toggle', event => {
+            if (!this.open) return
+            if ((event as ToggleEvent).newState !== 'closed') return
+            const host = event.target
+            if (!(host instanceof HTMLElement) || !host.hasAttribute('popover')) return
+            if (!host.contains(this.el)) return
+            this.closePanel()
+        }, {capture: true})
+
+        // …and when a `<dialog>` takes the top layer, which the listener above structurally cannot see:
+        // a modal dialog fires no `toggle`, and it is not an ancestor of this panel — `showModal()` acts
+        // on everything it does NOT contain. The panel is then painted but inert (measured on the
+        // dropdown, same mechanism, same result: `checkVisibility(): true` while `elementsFromPoint` at
+        // its centre returns the dialog), and `trackAnchor` would go on repositioning a control nobody
+        // can reach. A claim from a host that contains this wrapper is a dialog that OWNS the select —
+        // a form in a modal — and must not close it.
+        this.onDocument(TOP_LAYER_CLAIM_EVENT, event => {
+            if (!this.open) return
+            const host = (event as CustomEvent<{ host: HTMLElement }>).detail?.host
+            if (host?.contains(this.el)) return
+            this.closePanel()
         })
     }
 
@@ -242,6 +306,13 @@ export class SelectComponent extends RaptorComponent {
 
     private openPanel(): void {
         if (this.open || this.select.disabled) return
+
+        // Re-home the panel for THIS open. The answer moves: a select inside the page shell's "…" menu
+        // or the sidebar's foot belongs in that popover's subtree while it is showing, and back under
+        // <body> once it is not. Cheap and idempotent — an unchanged parent is a single reference test.
+        const target = portalTarget(this.el)
+        if (this.panel.parentElement !== target) target.appendChild(this.panel)
+
         this.open = true
         this.panel.hidden = false
         this.button.setAttribute('aria-expanded', 'true')

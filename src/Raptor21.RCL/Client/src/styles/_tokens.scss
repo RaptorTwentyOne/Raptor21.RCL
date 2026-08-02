@@ -1,13 +1,102 @@
 @use 'themes/light';
 @use 'themes/dark';
 
+/* Canonical z-index scale. Consumers read these through `var(--rg-z-*, <fallback>)` so an older host
+   stylesheet (loaded before this package ships the token) still resolves to the same numbers — the
+   fallback is the literal value below, kept in sync by hand.
+
+   Only bands that stack against content OUTSIDE their own container are tokenized. Local stacking
+   contexts (a grid's column resize handle, a sticky thead, a pinned column, a gallery caption) stay
+   literal single-digit values — they compete only with siblings inside the same component and never
+   need to be ordered against a different band.
+
+   THIS SCALE ORDERS THE NORMAL LAYER ONLY. IT DOES NOT COMPETE WITH THE TOP LAYER, IN EITHER DIRECTION.
+   An element showing as a `popover` or opened with `<dialog>.showModal()` is in the top layer, which
+   paints above the whole normal layer no matter what number anything down here carries — measured in
+   Chrome at 390x844 with the sidebar rail open: a `<body>` child probe at z-index 300, 400, 500, 600,
+   700 AND 2147483647 was returned UNDERNEATH the rail by `elementsFromPoint` in all six cases. Raising
+   a token to "get above" a drawer, a modal or a toast therefore does nothing at all; the fix is to put
+   the surface in the top layer too (and then to order it there, which is by OPENING ORDER — see
+   Client/src/core/dom.ts).
+
+   WHICH IS WHY MOST OF THIS SCALE IS NOW A MAP RATHER THAN A MECHANISM, and every line below says which
+   it is. Three tokens are LIVE — this library's own stylesheets read them through `var()`. The rest are
+   read by nothing in the compiled bundle: either because the surface moved to the top layer (`modal`,
+   `toast`, `confirm`) or because this library never painted in that band at all (`canvas`, `sticky`,
+   `nav`, `debug`). Verify with `grep -o 'var(--rg-z-[a-z]*' wwwroot/dist/raptor.*.css`.
+
+   THEY ARE STILL DECLARED, DELIBERATELY. Consumers read them for their OWN normal-layer surfaces, with
+   a literal fallback — `z-index: var(--rg-z-modal, 400)` — so deleting a declaration would not remove
+   the coupling, it would silently swap the host onto a hardcoded copy of the number and leave this file
+   no longer the single source of truth for the scale.
+
+   WHAT A HISTORICAL TOKEN DOES NOT DO: overriding it moves nothing this library renders. `--rg-z-modal`
+   does not place `.rg-modal`; `--rg-z-toast` does not place the toast stack; `--rg-z-confirm` does not
+   place the confirm. Those three are `<dialog>.showModal()` and `popover` surfaces, ordered by opening
+   order in the top layer. A host that must sit above one of them has to be in the top layer too. */
+:root {
+    --rg-z-canvas:  -1;   // SCALE ONLY — app background underlay; not painted by this library
+    --rg-z-sticky:  10;   // SCALE ONLY — in-content sticky (thead, pinned column) upper bound
+    --rg-z-chrome:  100;  // LIVE — fixed app chrome band (glass 100, header 110, FAB 120)
+    --rg-z-nav:     200;  // SCALE ONLY — off-canvas nav band; the rail is a popover now, see _sidebar.scss
+    --rg-z-drawer:  300;  // LIVE — offcanvas/filter panel/drawer (backdrop = band - 10)
+    --rg-z-modal:   400;  // HISTORICAL — .rg-modal is a <dialog>.showModal(); overriding this moves nothing
+    --rg-z-popover: 500;  // LIVE — select panel, dropdown, grid pop — can open inside a modal, so above it
+    --rg-z-toast:   600;  // HISTORICAL — the toast stack is popover="manual"; overriding this moves nothing
+    --rg-z-confirm: 700;  // HISTORICAL — the confirm is a <dialog>.showModal(); overriding this moves nothing
+    --rg-z-debug:   900;  // SCALE ONLY — debug badge
+
+    /* Touch-target floor. Apple HIG says 44x44 CSS px, Material says 48 — 44 is the number this
+       library targets, and it is the number every `_tap.scss` mixin defaults to. Published as a
+       custom property (not just a Sass variable) so a host can raise it for a kiosk/glove build
+       without rebuilding the package, and so the host stylesheet can size its OWN controls off
+       the same floor via `var(--rg-tap-min, 44px)`.
+
+       --rg-tap-min-tight is the fallback for the one place where a full 44 would push a control
+       out of its container and over a neighbour: it is never used to save effort, only where the
+       44 px box provably collides. Today that is .rg-funnel (see grid/_grid.scss). */
+    --rg-tap-min:       44px;
+    --rg-tap-min-tight: 40px;
+
+    /* How much width the page scroll lock had to take away, published while a lock is held and 0px the
+       rest of the time. Written on <html> by `core/scroll-lock.ts`; this declaration is the neutral
+       value it falls back to on release, so the token is never undefined.
+
+       WHAT IT IS FOR. Locking the page hides a classic scrollbar, and that WIDENS THE VIEWPORT — the
+       containing block of every `position: fixed` box, top layer included. The lock compensates
+       `<body>` with a matching `padding-right`, which is the whole answer for normal-flow content and
+       no answer at all for anything pinned to the viewport: measured (Chrome 150, real bundles, /roles,
+       with the app's own `::-webkit-scrollbar { width: 5px }`), `documentElement.clientWidth` went
+       1795 → 1800 when a modal took the lock, and the toast stack (`fixed; right: 1rem`) moved x
+       1459 → 1464 with it — 5px sideways, on a surface the user is reading.
+
+       WHO READS IT, and the rule for adding a reader: a box that is pinned to the viewport's TRAILING
+       EDGE and can already be on screen when a lock is taken. Today —
+         · `.rg-toast-stack`            (notify/_notify.scss)   `right`
+         · `.rg-topbar-slot`            (layout/_page-chrome.scss) `margin-inline-end`, which holds the
+                                        whole bar payload — and therefore anything anchored to a control
+                                        in it — exactly where it was
+         · the two page-chrome popovers' NON-anchored insets (layout/_page-chrome.scss)
+       A surface that OPENS after the lock (the dropdown sheet, the modal itself, the filter drawer) is
+       laid out in the locked state and has nothing to compensate; adding the term there would move it.
+       Nor do the `anchor()` branches read it: an anchored panel follows its own trigger, and the slot
+       above is what keeps that trigger still.
+
+       A host with fixed chrome of its own — a top bar, a rail, a FAB — can read the same token, which
+       is the reason it is a custom property and not an implementation detail of this package. */
+    --rg-scroll-gutter: 0px;
+}
+
 /* Restores the platform meaning of the `hidden` attribute inside this library's subtrees.
 
    The UA sheet's `[hidden] { display: none }` is a (0,1,0) rule, so any component rule that sets
    `display` on a class outranks it and the element stays on screen with `hidden` set.
 
-   Scoped by class prefix rather than by ancestry: the select and dropdown panels are portalled to
-   <body> to escape clipping, so an ancestor-based rule never reaches them. */
+   Scoped by class prefix rather than by ancestry: the select and dropdown panels are PORTALLED out of
+   their own wrapper to escape clipping, and there is no one ancestor they land under. `portalTarget`
+   (core/dom.ts) re-homes them per open — into whichever top-layer host is showing (the sidebar rail,
+   a page-chrome popover, an open dialog) and back to <body> when none is — so any ancestor-based rule
+   would reach them in some states and not in others. A prefix test does not care where they are. */
 [class^='rg-'][hidden],
 [class*=' rg-'][hidden],
 .raptor-grid [hidden],

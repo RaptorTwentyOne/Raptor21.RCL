@@ -1,6 +1,11 @@
 @namespace Raptor21.RCL.Layout
 
-<div id="@Id" class="@Class" @attributes="AdditionalAttributes">
+@* hx-history-elt scopes htmx's history snapshot/restore to this element. Without it htmx falls back to
+   snapshotting <body>, so a Back would re-create everything living outside the swap region — fixed app
+   chrome, modal containers — from a serialised copy. Present on every swap because every swap emits a
+   fresh wrapper. The client purges history-cache entries written before this scoping existed (see
+   runtime/page-lifecycle.ts, rg-hist-schema). *@
+<div id="@Id" class="@Class" hx-history-elt @attributes="AdditionalAttributes">
     @ChildContent
 </div>
 

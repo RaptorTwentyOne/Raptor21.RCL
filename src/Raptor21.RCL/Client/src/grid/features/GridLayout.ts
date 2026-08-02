@@ -6,7 +6,12 @@ import { ColumnSizing } from './ColumnSizing'
 /** px of breathing room left below a viewport-filling grid. */
 const GRID_BOTTOM_GAP = 12
 
-/** px — below this width the grid folds each row into a stacked card (mobile). */
+/**
+ * px — below this width the grid folds each row into a stacked card (mobile).
+ *
+ * Duplicated as a media query in `styles/grid/_grid.scss` (`max-width: 639.98px`), which paints the
+ * card layout on the server's markup before this file has even been fetched; keep the two in step.
+ */
 const CARD_BREAKPOINT = 640
 
 /** Minimum height a viewport-fitted grid may shrink to before it starts scrolling the page instead. */
@@ -90,7 +95,13 @@ export class GridLayout extends GridFeature {
      */
     layout(): void {
         const width = this.el.getBoundingClientRect().width
-        if (width > 0 && width < CARD_BREAKPOINT) {
+        // Either test puts the grid in card mode. The region width is the meaningful one — it catches a
+        // grid squeezed into a sidebar or a detail panel on a wide screen — but the stylesheet's
+        // first-paint fallback can only ask about the viewport, so the viewport test is repeated here to
+        // keep the two from disagreeing: a region measuring wider than the breakpoint inside a narrower
+        // viewport (a horizontally scrolling container) would otherwise get CSS cards with the desktop
+        // pass's inline height and column widths written over them.
+        if ((width > 0 && width < CARD_BREAKPOINT) || window.innerWidth < CARD_BREAKPOINT) {
             // The card layout is pure CSS (.rg-cards); stripping the desktop inline styles is all that
             // is needed for it to take over.
             this.el.classList.add('rg-cards')

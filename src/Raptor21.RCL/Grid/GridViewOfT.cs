@@ -50,6 +50,10 @@ public sealed record GridView<TRow>
     /// <summary>Leading checkbox selection column.</summary>
     public bool Selectable { get; init; }
 
+    /// <summary>Where the card-mode filter drawer is opened from — the region's own floating action
+    /// button (default) or the page shell's "…" menu. See <see cref="RaptorGridFilterEntry"/>.</summary>
+    public RaptorGridFilterEntry FilterEntry { get; init; } = RaptorGridFilterEntry.Fab;
+
     /// <summary>
     /// Render the grid's shell without its first page, then let the browser fetch that page as a normal
     /// grid post once the markup is in the DOM.

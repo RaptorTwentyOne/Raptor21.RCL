@@ -30,8 +30,12 @@ public sealed class HtmxApp<T> : ComponentBase where T : LayoutComponentBase
 /// <summary>
 /// Selects the layout for the request: the real full-page layout <typeparamref name="T"/> for a normal
 /// navigation, or a stripped-down layout for an htmx fragment request (so the swap gets no page chrome).
-/// Adds <c>Vary: HX-Request</c> to every response, so a URL served both as a full page and as a fragment
-/// is cached under separate keys.
+/// An htmx history-restore request (<c>HX-History-Restore-Request</c>, sent on a history-cache miss)
+/// gets the FULL layout despite carrying <c>HX-Request</c>: htmx extracts the <c>[hx-history-elt]</c>
+/// region out of the complete document itself, and a chromeless fragment would otherwise replace the
+/// whole page region without the fixed chrome around it. Adds <c>Vary: HX-Request,
+/// HX-History-Restore-Request</c> to every response, so a URL served as a full page, a fragment, or a
+/// restore document is cached under separate keys.
 /// </summary>
 public sealed class HtmxLayout<T> : LayoutComponentBase where T : LayoutComponentBase
 {
@@ -44,9 +48,11 @@ public sealed class HtmxLayout<T> : LayoutComponentBase where T : LayoutComponen
     /// <inheritdoc/>
     protected override void BuildRenderTree(RenderTreeBuilder builder)
     {
-        var isHtmx = HttpContext?.Request.IsHtmx() == true;
+        var htmxRequest = HttpContext?.Request.Htmx();
+        var isHtmx = htmxRequest is { IsHtmx: true, IsHistoryRestore: false };
 
-        HttpContext?.Response.Headers.TryAdd("Vary", HtmxRequestHeaderNames.HtmxRequest);
+        HttpContext?.Response.Headers.TryAdd("Vary",
+            $"{HtmxRequestHeaderNames.HtmxRequest}, {HtmxRequestHeaderNames.HistoryRestoreRequest}");
 
         if (isHtmx)
             builder.OpenComponent(0, IsRootComponent ? typeof(MinimalLayout) : typeof(EmptyLayout));

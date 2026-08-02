@@ -1,6 +1,16 @@
-<div class="rg-modal" data-rg-component="modal"
-     aria-labelledby="@(string.IsNullOrEmpty(Title) ? null : _titleId)"
-     data-rg-modal-static="@(Static ? "" : null)">
+@* A NATIVE <dialog>, opened with showModal() by Client/src/modal/ModalComponent.ts.
+   Not a <div> at --rg-z-modal: the sidebar rail is a popover, i.e. in the TOP LAYER, and no z-index in
+   the normal layer reaches it (measured — a probe at z-index 2147483647 still hit-tested UNDER an open
+   rail). As a <div> this dialog was measured painting sliced in half at the rail's edge, with the rail's
+   whole rect dead to the pointer in both directions. `showModal()` puts it in the top layer, closes the
+   rail as it opens, and makes the rest of the document inert without anyone writing `inert`.
+
+   It renders CLOSED — the UA's `dialog:not([open])` is reinforced at author specificity in
+   Client/src/styles/modal/_modal.scss, so nothing paints in the normal layer for the frame between the
+   htmx swap and the component mounting. *@
+<dialog class="rg-modal" data-rg-component="modal"
+        aria-labelledby="@(string.IsNullOrEmpty(Title) ? null : _titleId)"
+        data-rg-modal-static="@(Static ? "" : null)">
     <div class="@DialogClass" data-rg-modal-dialog>
         @if (!string.IsNullOrEmpty(Title) || Dismissible)
         {
@@ -19,7 +29,7 @@
             @ChildContent
         </div>
     </div>
-</div>
+</dialog>
 
 @code {
     /// <summary>Heading text. Omit to render no header — the content then owns the whole dialog.</summary>

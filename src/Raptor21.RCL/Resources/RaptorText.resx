@@ -74,6 +74,13 @@
   <data name="Grid_OpenFilters" xml:space="preserve">
     <value>Open filters</value>
   </data>
+  <data name="Grid_ColumnFilters" xml:space="preserve">
+    <value>Column filters</value>
+    <comment>Menu row that opens the grid's own per-column filter drawer. Deliberately NOT "Filters": a page may also carry a page-level filter panel, and two rows with the same name are worse than no menu row at all.</comment>
+  </data>
+  <data name="Grid_OpenColumnFilters" xml:space="preserve">
+    <value>Open column filters</value>
+  </data>
   <data name="Grid_CloseFilters" xml:space="preserve">
     <value>Close filters</value>
   </data>
@@ -122,5 +129,14 @@
   </data>
   <data name="Actions_Delete" xml:space="preserve">
     <value>Delete</value>
+  </data>
+
+  <data name="PageChrome_Actions" xml:space="preserve">
+    <value>Actions</value>
+    <comment>Accessible name of the page header's icon-only "…" menu trigger.</comment>
+  </data>
+  <data name="PageChrome_Back" xml:space="preserve">
+    <value>Back</value>
+    <comment>Accessible name of the page header's icon-only back link.</comment>
   </data>
 </root>

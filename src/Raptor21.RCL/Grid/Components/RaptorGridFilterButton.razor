@@ -1,0 +1,45 @@
+@using Raptor21.RCL.Localization
+@inject IRaptorLocalizer L
+
+@* The card-mode filter drawer's opener, rendered by the PAGE instead of by the grid.
+
+   WHY THIS IS A PAGE NODE AND NOT A MOVED FAB. The grid region replaces its own `outerHTML` on every
+   page/sort/filter change. Anything the shell had lifted OUT of that region survives the swap while the
+   server re-renders a fresh copy INSIDE it, so a "move the FAB into the menu" design leaves two openers
+   behind after the first pagination — the stale one in the menu (with a stale badge) and the new one in
+   the region. Declaring the opener where it lives instead means nothing is ever moved: the region owns
+   the drawer, the page owns the button, and neither re-renders the other.
+
+   WHY IT WORKS FROM OUTSIDE THE REGION. `data-rg-filter-open` carries the grid's id here. The drawer
+   feature listens on the DOCUMENT and resolves ownership by that id, so the button opens exactly one
+   grid's drawer no matter where in the page it sits. The valueless attribute the FAB uses keeps its old
+   meaning ("the grid I am inside"), which is what a grid nested in a detail panel relies on.
+
+   The badge is left EMPTY and `hidden` on the server. Its number is mirrored from the region's own
+   `.rg-filter-count` by `runtime/grid-filter-entry.ts`, because the count changes with every region swap
+   and the page markup around this button does not re-render then. Rendering a number here would show a
+   stale one from the moment the first filter is applied. *@
+
+<button type="button"
+        class="rg-gridfilter-entry"
+        data-rg-filter-open="@For"
+        aria-label="@L["Grid_OpenColumnFilters"]">
+    <span class="rg-gridfilter-ico" aria-hidden="true"></span>
+    <span class="rg-gridfilter-label">@L["Grid_ColumnFilters"]</span>
+    <span class="rg-gridfilter-count" hidden></span>
+</button>
+
+@code {
+    /// <summary>
+    /// The <c>Id</c> of the grid whose filter drawer this button opens — the same string the grid was
+    /// given, which the region publishes as <c>data-grid-id</c>.
+    /// </summary>
+    /// <remarks>
+    /// The grid must also declare <c>FilterEntry="RaptorGridFilterEntry.PageChrome"</c>. The two halves
+    /// are checked at runtime, not at compile time: if this button is missing the grid keeps its floating
+    /// action button, and if this button names a grid that is not on the page it simply does nothing.
+    /// </remarks>
+    [Parameter]
+    [EditorRequired]
+    public string For { get; set; } = default!;
+}

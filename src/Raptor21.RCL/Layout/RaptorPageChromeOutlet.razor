@@ -1,0 +1,22 @@
+@namespace Raptor21.RCL.Layout
+@using Microsoft.AspNetCore.Components.Sections
+
+@* =================================================================================================
+   Where the page's title lands inside the host's PERSISTENT mobile bar.
+
+   The bar itself must live outside the swapped region — it is `position: fixed`, and Safari samples
+   the status-bar tint from fixed chrome, so a bar re-created on every navigation flashes the tint to
+   a flat colour. The title, however, belongs to the page. This element resolves that: the container
+   is permanent, only its children change.
+
+   The id belongs to this component, not to the consumer. It is the contract between the server
+   section outlet below and `TOPBAR_SLOT` in `runtime/page-chrome.ts`; a consumer hand-writing
+   `<div id="rg-topbar-slot">` would be depending on an undocumented string. Placing this component is
+   optional — the projector no-ops when it is absent, and `RaptorPageChrome`'s stylesheet guards keep
+   the in-page heading visible in that case, so a layout without a mobile bar is a supported setup
+   rather than a page with no heading at all.
+   ================================================================================================= *@
+
+<div id="rg-topbar-slot" class="rg-topbar-slot">
+    <SectionOutlet SectionName="@RaptorPageChrome.TopbarSectionName"/>
+</div>

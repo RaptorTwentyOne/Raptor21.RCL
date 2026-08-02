@@ -1,3 +1,5 @@
+@use '../tap' as tap;
+
 .rg-sr-only {
     position: absolute !important;
     width: 1px;
@@ -44,12 +46,18 @@
     &:disabled { opacity: .55; cursor: not-allowed; }
 }
 
+/* iOS Safari zooms the page on focus of any control whose font-size is under 16px. App breakpoints
+   aren't visible from here, so this keys off the device class instead. */
+@media (hover: none) and (pointer: coarse) {
+    .rg-select-button, .rg-select-search, .rg-dd-search { font-size: 1rem; }
+}
+
 .rg-select-empty { color: var(--rg-muted); }
 
 .rg-select-panel,
 .rg-dd-panel {
     position: fixed;
-    z-index: 90;
+    z-index: var(--rg-z-popover);
     max-height: 18rem;
     display: flex;
     flex-direction: column;
@@ -199,6 +207,7 @@
     max-width: none;
     max-height: 70vh;
     overflow-y: auto;
+    overscroll-behavior: contain;
     border-width: 1px 0 0;
     border-radius: 1rem 1rem 0 0;
     padding-bottom: env(safe-area-inset-bottom);
@@ -214,13 +223,48 @@
     to { transform: none; }
 }
 
+/* ================================================================================================
+   TOUCH TARGETS — see ../_tap.scss. Real boxes only; no pseudo-element hit areas.
+   ================================================================================================ */
+@include tap.media {
+    /* Row-actions kebab: 32x32 -> 44x44. It lives in .rg-cardrow-actions, whose parent .rg-cardrow
+       is `display: flex; gap: .75rem`, so the nearest control (the card's chevron / value block)
+       stays 12px away, edge to edge. The card row itself is the master-detail tap target and it
+       grows with the button, so the kebab no longer sits inside a taller sibling's hit area. */
+    .rg-actions-trigger { min-width: var(--rg-tap-min); min-height: var(--rg-tap-min); }
+
+    /* Panel rows. All three are full-width, stacked with no gap inside their scroll container, so
+       adjacent boxes touch at the border and cannot overlap. .rg-select-option was a plain block:
+       flex + centring keeps a one-line label centred rather than pinned to the top of the taller
+       box (both mixins below do that). */
+    .rg-dd-item,
+    .rg-actions-item,
+    .rg-select-option { @include tap.row; }
+
+    /* The trigger and the panel's search field are already flex/inputs — height only. */
+    .rg-select-button,
+    .rg-select-search,
+    .rg-dd-search { @include tap.height; }
+}
+
+/* The scrim sits on an absolutely positioned `::before` rather than on the fixed element: Safari 26
+   (iOS 26) tints its status bar and toolbar from the background of any fixed element reaching the
+   viewport edges, and this one covers the lot. Absolute boxes are ignored, so the wash still paints
+   for the user without reaching the browser chrome. The backdrop only exists in the DOM while the
+   sheet is open (DropdownComponent), so it needs no closed state of its own. */
 .rg-dd-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 89;
-    background: rgb(0 0 0 / .45);
+    z-index: calc(var(--rg-z-popover) - 10);
     opacity: 1;
     transition: opacity .2s ease;
+
+    &::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: rgb(0 0 0 / .45);
+    }
 
     @media (prefers-reduced-motion: reduce) {
         transition: none;

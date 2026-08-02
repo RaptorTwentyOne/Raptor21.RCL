@@ -315,16 +315,71 @@
     .rg-gal-spin-ready & { opacity: 0; }
 }
 
+/* ---- UA <dialog> neutralisation ---------------------------------------------------------------
+   `.rg-gal-lightbox` is a native `<dialog>` opened with `showModal()` (gallery/GalleryLightbox.ts for
+   why it is a modal and not an off-canvas surface), and the UA sheet dresses one as a centred,
+   bordered, padded, fit-content box. Every declaration below undoes exactly one of those. It is the
+   direct counterpart of the identical blocks in `modal/_modal.scss` and `notify/_notify.scss`; see the
+   first of those for why `:where()` — the declarations that have to lose are in the USER-AGENT origin,
+   which author origin beats regardless of specificity, so 0,0,0 wins there while still losing to
+   `.rg-gal-lightbox` (0,1,0) below and to every consumer rule. Properties `.rg-gal-lightbox` restates
+   itself (position, inset, display, padding) are left out.
+
+   THE ELEMENT MUST NOT BECOME A CONTAINING BLOCK — no `transform`, `filter`, `backdrop-filter`,
+   `perspective`, `will-change` or `contain: paint` HERE. The blur belongs to the `::before` and has to
+   stay there for two independent reasons now: Safari's status-bar sampling (below) and the fact that a
+   filter on the dialog itself would re-resolve any `position: fixed` descendant against its box. */
+:where(dialog.rg-gal-lightbox) {
+    margin: 0;                  /* UA: margin: auto — centres the box and defeats `inset: 0` */
+    border-width: 0;            /* UA: border: solid. Width, not `border-style: none`: a consumer draws
+                                   an edge by setting a WIDTH at 0,1,0 and a 0,0,0 reset owns the STYLE. */
+    max-inline-size: none;      /* UA: calc(100% - 6px - 2em) */
+    max-block-size: none;       /* UA: calc(100% - 6px - 2em) */
+    inline-size: auto;          /* UA: fit-content */
+    block-size: auto;           /* UA: fit-content */
+    background: none;           /* UA: background-color: canvas — the wash is the ::before below */
+    color: inherit;             /* UA: color: canvastext */
+    overflow: visible;          /* UA: overflow: auto */
+}
+
+/* CLOSED MEANS INVISIBLE, at author specificity. The UA's own `dialog:not([open]) { display: none }` is
+   user-agent origin and loses to the author `display: flex` below, which would paint the viewer in the
+   NORMAL layer — the exact state this element was moved out of. Restated at (0,2,1) so the closed state
+   wins. Never seen in practice: the element is appended and shown in the same statement. */
+dialog.rg-gal-lightbox:not([open]) { display: none; }
+
+/* Emptied rather than left to double up with the `::before` wash. */
+dialog.rg-gal-lightbox::backdrop { background: none; }
+
+/* Full-viewport fixed layer: the dark wash and the blur are the two properties Safari 26 (iOS 26)
+   samples off a fixed element to tint its status bar and toolbar, so they sit on an absolutely
+   positioned `::before` — Safari ignores absolute boxes — and the lightbox itself stays transparent.
+   The same reasoning is why the wash did NOT move to `::backdrop` when this became a `<dialog>`:
+   `::backdrop` is a viewport-filling fixed box and would put the sampling question straight back.
+
+   NO `z-index`. It had `--rg-z-modal` (400) and it bought nothing — measured with one `.rg-modal` open,
+   `elementsFromPoint` at this element's own centre returned `[DIALOG.rg-modal, HTML]` and not this
+   element at all. The top layer is not reachable by any normal-layer z-index and is not reached FROM
+   one; ordering against the rail, the toast and another dialog is opening order now (core/dom.ts,
+   core/dialog-stack.ts). Dropping it does not orphan the `z-index: -1` on `::before` either: a
+   top-layer element establishes its own stacking context, which is what `.rg-modal::before` already
+   relies on. */
 .rg-gal-lightbox {
     position: fixed;
     inset: 0;
-    z-index: 1000;
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: clamp(.75rem, 3vw, 2rem);
+}
+
+.rg-gal-lightbox::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
     background: rgb(0 0 0 / .72);
     backdrop-filter: blur(2px);
-    padding: clamp(.75rem, 3vw, 2rem);
 }
 
 .rg-gal-panel {
