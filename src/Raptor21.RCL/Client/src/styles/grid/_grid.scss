@@ -9,7 +9,13 @@
 .raptor-grid .rg-error { padding: .55rem .85rem; border-bottom: 1px solid var(--rg-danger-border); background: var(--rg-danger-bg); color: var(--rg-danger-fg); font-size: .8rem; font-weight: 500; }
 .raptor-grid .rg-error[hidden] { display: none; }
 .raptor-grid .rg-form { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
-.raptor-grid table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
+// border-collapse: SEPARATE, not collapse — a measured scrollbar fix, not a styling preference. Cells
+// carry only border-right/bottom, so separate produces no double rules and the look is identical;
+// collapse, however, paints HALF of the rightmost cell's 1px border OUTSIDE the table box: with the
+// columns filling the container to the pixel the table ran 0.5px over, scrollWidth rounded that up to
+// 1, and every grid that was meant to fit showed a 1px phantom horizontal scrollbar. (Separate is
+// also the healthier model under sticky pinned columns.)
+.raptor-grid table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; table-layout: fixed; }
 .raptor-grid thead .rg-head { background: var(--rg-header-bg); }
 .raptor-grid th, .raptor-grid td { border-bottom: 1px solid var(--rg-border); }
 .raptor-grid th { border-right: 1px solid var(--rg-border-soft); }
@@ -27,8 +33,13 @@
 /* Resize: frozen (px) layout only kicks in once a column is dragged; grids left alone stay auto/responsive. */
 .raptor-grid table.rg-resized { table-layout: fixed; }
 .raptor-grid table.rg-resized td:not(.rg-wrap):not(.rg-detail-cell) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.raptor-grid .rg-resize { position: absolute; top: 0; bottom: 0; inset-inline-end: -3px; width: 7px; cursor: col-resize; user-select: none; touch-action: none; z-index: 3; }
-.raptor-grid .rg-resize::after { content: ""; position: absolute; top: 20%; bottom: 20%; inset-inline-end: 3px; width: 2px; background: transparent; }
+// The handle sits INSIDE its column (inset-inline-end: 0), not overhanging. The old -3px existed so
+// the boundary could be grabbed from either side; but the 3px hanging off the RIGHTMOST column grew
+// scrollWidth and bought a full horizontal scrollbar on a grid that fit exactly (measured: the
+// fitting arithmetic was pixel-perfect and this handle was the only thing overflowing). The 7px hit
+// area sits just left of the boundary; the visual line (::after) is on the boundary either way.
+.raptor-grid .rg-resize { position: absolute; top: 0; bottom: 0; inset-inline-end: 0; width: 7px; cursor: col-resize; user-select: none; touch-action: none; z-index: 3; }
+.raptor-grid .rg-resize::after { content: ""; position: absolute; top: 20%; bottom: 20%; inset-inline-end: 0; width: 2px; background: transparent; }
 .raptor-grid .rg-resize:hover::after { background: var(--rg-accent); }
 body.rg-col-resizing, body.rg-col-resizing * { cursor: col-resize !important; }
 body.rg-col-resizing { user-select: none !important; }
@@ -108,7 +119,15 @@ body.rg-col-resizing .raptor-grid .rg-resize::after { background: var(--rg-accen
 .raptor-grid .rg-pop-op, .raptor-grid .rg-pop-input { width: 100%; margin-bottom: .45rem; border: 1px solid var(--rg-input-border); border-radius: .25rem; background-color: var(--rg-input-bg); color: inherit; padding: .35rem .5rem; font-size: .8125rem; }
 .raptor-grid .rg-pop-op:focus, .raptor-grid .rg-pop-input:focus { outline: none; border-color: var(--rg-accent); box-shadow: 0 0 0 1px var(--rg-accent); }
 .raptor-grid .rg-pop-set { max-height: 15rem; overflow-y: auto; margin-bottom: .35rem; }
+// The set popup's search box — same face as .rg-pop-input, but deliberately NOT that class:
+// FilterPopups' clear/focus paths treat .rg-pop-input as "the column's value input", and this box is
+// not a value input but a client-side sieve (no name, no hx, never reaches the server).
+.raptor-grid .rg-pop-set-search { width: 100%; margin-bottom: .45rem; border: 1px solid var(--rg-input-border); border-radius: .25rem; background-color: var(--rg-input-bg); color: inherit; padding: .35rem .5rem; font-size: .8125rem; }
+.raptor-grid .rg-pop-set-search:focus { outline: none; border-color: var(--rg-accent); box-shadow: 0 0 0 1px var(--rg-accent); }
 .raptor-grid .rg-pop-check { display: flex; align-items: center; gap: .5rem; padding: .25rem .1rem; font-size: .8125rem; cursor: pointer; }
+// An option the search excluded. A class, NOT the hidden attribute: the row is display:flex, and
+// that declaration would override the attribute's UA default.
+.raptor-grid .rg-pop-check.rg-set-hidden { display: none; }
 .raptor-grid .rg-pop-check input { width: auto; margin: 0; }
 .raptor-grid .rg-pop-actions { display: flex; justify-content: flex-end; }
 .raptor-grid .rg-pop-clear { font-size: .75rem; color: var(--rg-accent); background: none; border: 0; cursor: pointer; padding: .1rem .2rem; }

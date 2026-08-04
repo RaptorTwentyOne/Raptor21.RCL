@@ -27,6 +27,83 @@ interface RaptorChartHandle {
     loading(): Promise<void>;
 }
 
+/** One point on a map. */
+interface RaptorMapMarker {
+    id?: string;
+    lat: number;
+    lng: number;
+
+    /** Tooltip text. Set as text, never as HTML. */
+    label?: string;
+
+    /** The marker's role, which decides how prominently it is drawn. */
+    kind?: 'hub' | 'origin' | 'point';
+
+    /** Relative magnitude, scaled against the largest of the same kind on the map. */
+    weight?: number;
+    color?: string;
+}
+
+/** A connection between two points, drawn as a curve. */
+interface RaptorMapArc {
+    fromLat: number;
+    fromLng: number;
+    toLat: number;
+    toLng: number;
+
+    /** Relative magnitude, scaled against the heaviest arc on the map. */
+    weight?: number;
+    color?: string;
+
+    /** Tooltip text. Set as text, never as HTML. */
+    label?: string;
+}
+
+/**
+ * A map: a basemap, some points, and the connections between them.
+ *
+ * Data only — nothing here is evaluated on the client, so a page carrying a map needs no `unsafe-eval`.
+ * Tiles are fetched as images from the basemap's host, which a strict `img-src` must allow.
+ */
+interface RaptorMapData {
+    basemap?: 'cartoPositron' | 'cartoDarkMatter' | 'openStreetMap';
+
+    /** A tile URL template overriding `basemap`, for hosts running their own tile server. */
+    tileUrl?: string;
+    attribution?: string;
+
+    centerLat?: number;
+    centerLng?: number;
+    zoom?: number;
+
+    /** Frame the view on the data instead of a fixed centre and zoom. Defaults to true. */
+    fitToData?: boolean;
+
+    markers?: RaptorMapMarker[];
+    arcs?: RaptorMapArc[];
+
+    /** Whether scrolling over the map zooms it. Defaults to false, so the page keeps its scroll. */
+    scrollWheelZoom?: boolean;
+    zoomControl?: boolean;
+}
+
+interface RaptorMapHandle {
+    /** Draws the model, replacing any previous map on the element. */
+    render(data: RaptorMapData): Promise<void>;
+
+    /** Redraws with a new model. */
+    update(data: RaptorMapData): Promise<void>;
+
+    /** Reveals the server-rendered <Empty> slot. */
+    empty(): Promise<void>;
+
+    /** Reveals the server-rendered <Error> slot. */
+    fail(): Promise<void>;
+
+    /** Reveals the server-rendered <Loading> slot. */
+    loading(): Promise<void>;
+}
+
 interface RaptorGridApi {
     /** Row keys currently selected in a grid. */
     getSelection(gridId: string): string[];
@@ -224,6 +301,13 @@ interface Window {
      * held across one would otherwise draw into a detached element.
      */
     raptorChart: (target: string | HTMLElement) => RaptorChartHandle;
+
+    /**
+     * A handle for a map element, by id or element.
+     *
+     * Resolves the element on every call, for the same reason as the chart handle above.
+     */
+    raptorMap: (target: string | HTMLElement) => RaptorMapHandle;
 
     /** Grid operations, by grid id. */
     raptorGrid: RaptorGridApi;

@@ -294,6 +294,18 @@
                                 @if (col.Filter == GridFilterType.Set)
                                 {
                                     var selected = _setSelections.TryGetValue(col.Key, out var sel) ? sel : (IReadOnlyCollection<string>)[];
+                                    @* A long option list must be searchable (measured complaint: in a 40+
+                                       option set the one wanted entry could only be found by scrolling).
+                                       NEVER REACHES THE SERVER: no name (not serialised into the form), no
+                                       hx attribute — FilterPopups filters the option labels client-side.
+                                       The threshold exists because a search box over a handful of options
+                                       is noise. Living inside the hx-preserve'd panel, the typed text
+                                       survives region swaps. *@
+                                    @if (col.SetOptions!.Count >= 8)
+                                    {
+                                        <input type="search" class="rg-pop-set-search" data-rg-set-search
+                                               placeholder="Search…" autocomplete="off" aria-label="Search @col.Header options"/>
+                                    }
                                     <div class="rg-pop-set">
                                         @foreach (var option in col.SetOptions!)
                                         {

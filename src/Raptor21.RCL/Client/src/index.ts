@@ -16,6 +16,7 @@ import './styles/index.scss'
 import {define, start} from './core/registry'
 import {installApi} from './grid/api'
 import {installChartApi} from './chart/api'
+import {installMapApi} from './map/api'
 import {installProgressApi} from './progress/api'
 import {installNotifyApi} from './notify/api'
 import {ensureHtmx} from './runtime/htmx-boot'
@@ -36,9 +37,11 @@ define('dropdown', () => import('./forms/DropdownComponent').then(m => m.Dropdow
 define('tabs', () => import('./tabs/TabsComponent').then(m => m.TabsComponent))
 define('gallery', () => import('./gallery/GalleryComponent').then(m => m.GalleryComponent))
 define('chart', () => import('./chart/ChartComponent').then(m => m.ChartComponent))
+define('map', () => import('./map/MapComponent').then(m => m.MapComponent))
 
 installApi()
 installChartApi()
+installMapApi()
 installProgressApi()
 installNotifyApi()
 installPageLifecycle()

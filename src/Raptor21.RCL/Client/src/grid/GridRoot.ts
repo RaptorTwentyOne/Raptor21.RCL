@@ -6,6 +6,7 @@ import { FilterPopups } from './features/FilterPopups'
 import { GridLayout } from './features/GridLayout'
 import { InlineEdit } from './features/InlineEdit'
 import { LoadErrors } from './features/LoadErrors'
+import { LoadingSkeleton } from './features/LoadingSkeleton'
 import { MasterDetail } from './features/MasterDetail'
 import { MobileFilterDrawer } from './features/MobileFilterDrawer'
 import { RowSelection } from './features/RowSelection'
@@ -30,6 +31,7 @@ export class GridRoot extends GridComponent {
             .use(MobileFilterDrawer)
             .use(VirtualScroll)
             .use(LoadErrors)
+            .use(LoadingSkeleton)
             .use(InlineEdit)
             .use(ColumnSizing)
             .use(ColumnPinning)

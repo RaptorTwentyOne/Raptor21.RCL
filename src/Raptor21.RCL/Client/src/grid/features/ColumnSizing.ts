@@ -193,6 +193,7 @@ export class ColumnSizing extends GridFeature {
         table.style.width = `${Math.max(container, Math.round(total))}px`
     }
 
+
     // --- drag to resize ----------------------------------------------------
 
     private startResize(event: MouseEvent): void {

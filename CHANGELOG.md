@@ -11,6 +11,41 @@ default only. Tag and heading below must agree.
 
 ## [Unreleased]
 
+## [0.2.0-preview.2] - 2026-08-04
+
+Additive on top of `0.2.0-preview.1` — no contract breaks. One new component family, two grid UX
+features and three measured defect fixes that had every "meant to fit" grid showing phantom
+scrollbars.
+
+### Added
+
+- **`RaptorMap`** (`Raptor21.RCL.Map`) — a generic, purely presentational connection map: typed C#
+  model (`RaptorMapModel`, `MapMarker`, `MapArc`, `MapBasemap`), JSON island, lazy-loaded Leaflet
+  client with CARTO/OSM basemaps, quadratic-Bézier connection arcs, weight-scaled `circleMarker`s,
+  auto-fit and a `window.raptorMap` handle. The CARTO presets follow the host's `.dark` theme
+  (Positron ↔ Dark Matter) unless an explicit `TileUrl` pins one. No `eval`, no bundled marker PNGs
+  in the draw path; the raster assets Leaflet's stylesheet references are served with correct image
+  content types (`RaptorAssetStore` now knows png/gif/webp/jpeg).
+- **Grid loading skeleton** (`LoadingSkeleton` feature) — while a filter, sort or page change is in
+  flight, the data rows give way to skeleton rows identical to the deferred first render's, so the
+  user can see the query answering. Row count is derived from the grid's visible height, not the
+  page size; the deferred first render's server-capped 12 rows are topped up to the fitted height.
+  Rows are hidden rather than destroyed: a failed response restores them under `LoadErrors`' bar.
+- **Set-filter search box** — set filters with 8+ options render a client-side search input that
+  sieves the option labels as you type. It never reaches the server (no name, no hx), survives
+  region swaps via the `hx-preserve`d panel, focuses on open, and resets with "Clear filter".
+
+### Fixed
+
+- **Phantom horizontal scrollbar on fitting grids** (two independent, measured causes): the column
+  resize handle overhung the rightmost column by 3px (`inset-inline-end: -3px` → now `0`), and
+  `border-collapse: collapse` painted half of the rightmost cell's border outside the table box
+  (0.5px → `scrollWidth` rounds to 1). Tables now use `border-collapse: separate; border-spacing: 0`
+  — visually identical, since cells only carry right/bottom borders.
+- **Phantom vertical scrollbar on the tablist**: tabs no longer overhang the list by -1px to cover
+  its border; the list's rule is an inset shadow the active underline covers in-bounds, and the
+  tablist clips vertically by declaration.
+
 ## [0.2.0-preview.1] - 2026-08-02
 
 Shipping as a **preview**, like `0.1.0-preview.1` before it: this is the first release of the
