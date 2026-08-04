@@ -1,0 +1,82 @@
+// Map component.
+//
+// Two halves, and the split matters. The layout rules below are ours. The rules for the elements the
+// mapping library builds — panes, tiles, controls, tooltips — are its own stylesheet, imported by the
+// component's TypeScript so it travels with the code that needs it rather than being a separate file a
+// consumer has to remember.
+//
+// The colour custom properties are read at draw time by MapComponent, not applied by CSS: the library
+// paints markers and arcs into SVG attributes, which no stylesheet can restyle afterwards. Declaring
+// them here still keeps them themable in one place and overridable per instance.
+
+.rg-map {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+
+  // Read by the component when it draws. Named rather than hardcoded so a host can rebrand a map by
+  // setting two variables on it, and so light and dark can differ without touching the model.
+  --rg-map-accent: #6366f1;
+  --rg-map-muted: #94a3b8;
+
+  // The library draws its own surfaces; give it a base so the box is never transparent while tiles load.
+  --rg-map-surface: #f8fafc;
+}
+
+.dark .rg-map {
+  --rg-map-accent: #818cf8;
+  --rg-map-muted: #64748b;
+  --rg-map-surface: #0f172a;
+}
+
+.rg-map--fill {
+  flex: 1 1 auto;
+  height: 100%;
+}
+
+.rg-map__canvas {
+  flex: 1 1 auto;
+  width: 100%;
+  // Rounded to match the panels these sit in; the library paints tiles to the container's edge and would
+  // otherwise square off the corners of whatever card holds it.
+  overflow: hidden;
+  min-width: 0;
+  border-radius: inherit;
+  background: var(--rg-map-surface);
+}
+
+.rg-map__state {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+}
+
+// The library's default attribution is sized for a standalone map and shouts inside a dashboard panel.
+// Its classes are the library's own global ones, so these are plain descendant selectors — this build
+// runs css-loader without modules, and a `:global()` wrapper would survive into the output as literal
+// text rather than being unwrapped.
+.rg-map__canvas .leaflet-control-attribution {
+  font-size: 10px;
+  background: rgb(255 255 255 / 70%);
+}
+
+.dark .rg-map__canvas .leaflet-control-attribution {
+  color: #94a3b8;
+  background: rgb(15 23 42 / 70%);
+
+  a {
+    color: #cbd5e1;
+  }
+}
+
+// Arcs are decoration between two endpoints that carry the meaning; letting the pointer through keeps a
+// dense fan from stealing hover from the markers underneath it. Arcs that carry a tooltip opt back in.
+.rg-map__arc {
+  pointer-events: none;
+}
+
+.rg-map__arc[tabindex],
+.leaflet-interactive.rg-map__arc {
+  pointer-events: auto;
+}

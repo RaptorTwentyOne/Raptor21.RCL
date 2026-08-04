@@ -3,8 +3,18 @@
 .rg-tablist {
     display: flex;
     gap: .25rem;
-    border-bottom: 1px solid var(--rg-border);
+    // The bottom rule is an inset shadow, NOT a border — and that is a measured scrollbar fix, not a
+    // styling preference. The old construction was border-bottom here plus margin-bottom:-1px on the
+    // tab (so the active tab's 2px underline could cover the list's border). That -1px pushed the
+    // child outside the container, and because overflow-x:auto makes the OTHER axis compute to auto
+    // as well (per spec), Windows drew a full vertical scrollbar track for a 1px overflow. An inset
+    // shadow paints INSIDE the box; the tab's underline covers it without overflowing, and nothing is
+    // left to overflow at all.
+    box-shadow: inset 0 -1px 0 var(--rg-border);
     overflow-x: auto;
+    // Documented safety: a tablist never scrolls vertically. If something 1px-tall sneaks in later,
+    // it gets clipped instead of buying a scrollbar track.
+    overflow-y: hidden;
 }
 
 .rg-tab {
@@ -12,7 +22,8 @@
     align-items: center;
     gap: .5rem;
     padding: .85rem 1.25rem;
-    margin-bottom: -1px;
+    // margin-bottom:-1px REMOVED — it was the source of the tablist's scrollbar defect, see the
+    // .rg-tablist note.
     font: inherit;
     font-size: .85rem;
     font-weight: 500;

@@ -35,6 +35,18 @@ export class FilterPopups extends GridFeature {
     init(): void {
         this.on('click', event => this.onClick(event))
 
+        // The set popup's search box filters its option labels client-side. Nothing here posts: the
+        // input carries no name and no hx-trigger; only what the user CHECKS reaches the server.
+        this.on('input', event => this.onSetSearch(event))
+
+        // Enter inside the search box must not submit the enclosing grid form: the form's hx-trigger
+        // replaces the default submit trigger, so a native submit would bypass htmx entirely and
+        // navigate the page.
+        this.on('keydown', event => {
+            if ((event as KeyboardEvent).key !== 'Enter') return
+            if (closest(event.target, '[data-rg-set-search]')) event.preventDefault()
+        })
+
         // Dismissal escapes the element: a click anywhere on the page, this grid or not, closes an open
         // popup.
         this.onDocument('click', event => this.onDocumentClick(event))
@@ -105,7 +117,26 @@ export class FilterPopups extends GridFeature {
 
         this.position(pop, funnel)
         pop.classList.add('rg-open')
-        pop.querySelector<HTMLInputElement>('.rg-pop-input')?.focus()
+        // A set popup has no value input; its search box is the natural first stop instead.
+        pop.querySelector<HTMLInputElement>('.rg-pop-input, [data-rg-set-search]')?.focus()
+    }
+
+    /**
+     * Filters a set popup's options by label as the user types. Class-based hiding, not the `hidden`
+     * attribute: the option rows are display:flex, which outranks the attribute's UA default.
+     */
+    private onSetSearch(event: Event): void {
+        const input = closest<HTMLInputElement>(event.target, '[data-rg-set-search]')
+        if (!input || !this.isOwn(input)) return
+
+        const pop = input.closest<HTMLElement>('.rg-pop')
+        if (!pop) return
+
+        const query = input.value.trim().toLocaleLowerCase()
+        for (const option of pop.querySelectorAll<HTMLElement>('.rg-pop-check')) {
+            const matches = query === '' || (option.textContent ?? '').toLocaleLowerCase().includes(query)
+            option.classList.toggle('rg-set-hidden', !matches)
+        }
     }
 
     /**
@@ -150,6 +181,16 @@ export class FilterPopups extends GridFeature {
     private clearFilter(button: HTMLElement): void {
         const pop = this.findPopup(button.getAttribute('data-rg-clear') || '')
         if (!pop) return
+
+        // Clearing a set filter also clears its search: leaving a narrowed list behind an emptied
+        // filter reads as options having vanished.
+        const search = pop.querySelector<HTMLInputElement>('[data-rg-set-search]')
+        if (search && search.value !== '') {
+            search.value = ''
+            for (const option of pop.querySelectorAll<HTMLElement>('.rg-pop-check')) {
+                option.classList.remove('rg-set-hidden')
+            }
+        }
 
         const checked = [...pop.querySelectorAll<HTMLInputElement>('.rg-pop-check input:checked')]
         if (checked.length > 0) {

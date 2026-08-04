@@ -69,6 +69,14 @@ export default defineConfig({
                 ],
                 type: 'javascript/auto',
             },
+            {
+                // Plain CSS shipped by a dependency (the mapping library's stylesheet). Imported from the
+                // component that needs it, so it is extracted into that component's async chunk and
+                // fetched only by a page that mounts one.
+                test: /\.css$/,
+                use: [rspack.CssExtractRspackPlugin.loader, {loader: 'css-loader', options: {importLoaders: 0}}],
+                type: 'javascript/auto',
+            },
         ],
     },
 

@@ -53,6 +53,14 @@ public sealed class RaptorAssetStore
         ".woff2" => "font/woff2",
         ".woff" => "font/woff",
         ".svg" => "image/svg+xml",
+        // Raster images reach the bundle through a dependency's stylesheet — the mapping library's
+        // control and marker sprites, for one — so the build emits them next to the CSS that names them.
+        // Served as octet-stream they still paint in most browsers, but they fall outside the image
+        // cache heuristics and a host sending X-Content-Type-Options: nosniff would refuse them.
+        ".png" => "image/png",
+        ".gif" => "image/gif",
+        ".webp" => "image/webp",
+        ".jpg" or ".jpeg" => "image/jpeg",
         _ => "application/octet-stream",
     };
 
