@@ -1,21 +1,23 @@
 using Microsoft.Extensions.Primitives;
+using Raptor21.RCL.Rendering;
 
 namespace Raptor21.RCL.Grid;
 
 /// <summary>
-/// Builds a render-ready <see cref="GridViewModel"/> from a strongly-typed <see cref="IGridSource{TRow}"/>.
+/// Prepares a grid render from a strongly-typed <see cref="IGridSource{TRow}"/>: permission-filters the
+/// columns, resolves dynamic Set options, binds the request into a <see cref="GridQueryState"/> and fetches
+/// one page.
 /// <para>
 /// There is no grid registry, no lookup by id and no reflection: the caller already holds the source (its
-/// own page), columns carry compiled accessors and typed cell renderers, and the row type never escapes
-/// into the view — the partials only ever see finished HTML plus the non-generic
-/// <see cref="GridColumnView"/> projection.
+/// own page) and columns carry compiled accessors and typed cell renderers.
 /// </para>
 /// </summary>
 public sealed class RaptorGridBuilder(
     IGridAuthorization authorization,
     IGridUserContext userContext,
     GridRequestBinder binder,
-    IEnumerable<IGridSetOptionsProvider> setOptionsProviders)
+    IEnumerable<IGridSetOptionsProvider> setOptionsProviders,
+    RaptorRenderGate gate)
 {
     private readonly IReadOnlyDictionary<string, IGridSetOptionsProvider> _setOptionsProviders =
         setOptionsProviders
@@ -23,79 +25,43 @@ public sealed class RaptorGridBuilder(
             .ToDictionary(g => g.Key, g => g.Last(), StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Parses the request (htmx form on POST, query string on first load), fetches one page and renders it
-    /// to a <see cref="GridViewModel"/> — the <c>.cshtml</c> render path, where every cell is finished HTML.
-    /// The Blazor <c>&lt;RaptorGrid&gt;</c> path calls <see cref="PrepareAsync{TRow}"/> instead and renders
-    /// cells from markup templates; both share the same permission-filter / set-option / bind / fetch prep.
+    /// The render-independent half of a grid build: permission-filter the columns, resolve any dynamic Set
+    /// options, bind the request into a <see cref="GridQueryState"/>, apply the user's column order, and
+    /// fetch one page. Returns the typed columns and <b>raw</b> rows — no cells are rendered — so a caller
+    /// can render each cell however it likes (the <c>&lt;RaptorGrid&gt;</c> component renders them from its
+    /// markup templates).
+    /// <para>
+    /// The whole data phase — the host's <see cref="IGridAuthorization"/>,
+    /// <see cref="IGridSetOptionsProvider"/> and <see cref="IGridSource{TRow}.GetPageAsync"/> callbacks —
+    /// runs as ONE exclusive section under the request's <see cref="RaptorRenderGate"/>, so the package
+    /// never invokes two host data callbacks in parallel within one scope. This entry ACQUIRES the gate,
+    /// so it is for callers outside the component seam (a handler composing a grid by hand, a plain
+    /// component's data phase); the <c>&lt;RaptorGrid&gt;</c> region enters through
+    /// <see cref="PrepareUnderCallerGateAsync{TRow}"/> instead, because its
+    /// <see cref="RaptorSequentialComponent"/> lifecycle already holds the gate — calling this overload
+    /// from such a lifecycle would nest acquisitions and time out.
+    /// </para>
     /// </summary>
-    public async Task<GridViewModel> BuildAsync<TRow>(
+    public Task<PreparedGrid<TRow>> PrepareAsync<TRow>(
         IGridSource<TRow> source,
         IEnumerable<KeyValuePair<string, StringValues>> request,
-        GridEndpoints endpoints,
         CancellationToken ct = default,
         bool deferred = false)
     {
         ArgumentNullException.ThrowIfNull(source);
-
-        var view = source.BuildView();
-        var userId = userContext.UserId;
-        var prepared = await PrepareAsync(source, view, request, ct, deferred);
-
-        var rows = new List<GridRow>(prepared.Rows.Count);
-        foreach (var row in prepared.Rows)
-        {
-            var cells = new List<GridCell>(prepared.Columns.Count);
-            foreach (var column in prepared.Columns)
-                cells.Add(RenderCell(column, row));
-
-            rows.Add(new GridRow(source.RowKey(row), cells, view.Card?.Invoke(row).Html));
-        }
-
-        var state = prepared.State;
-        var pageSize = state.PageSize <= 0 ? view.PageSize : state.PageSize;
-        var totalPages = pageSize == 0 ? 0 : (int)Math.Ceiling(prepared.TotalCount / (decimal)pageSize);
-        var sort = state.Sorts.FirstOrDefault();
-        var (filterValues, filterOps, setSelections) = BuildFilterState(state);
-
-        return new GridViewModel
-        {
-            GridId = view.Id,
-            Endpoint = endpoints.Region,
-            BlockEndpoint = endpoints.Block,
-            CellEndpoint = endpoints.Cell,
-            Columns = [.. prepared.Columns.Select(GridColumnView.From)],
-            Rows = rows,
-            State = state,
-            TotalCount = prepared.TotalCount,
-            TotalPages = totalPages,
-            PageSizeOptions = view.PageSizeOptions,
-            Deferred = deferred,
-            MasterDetail = view.MasterDetail,
-            DetailUrl = view.DetailUrl,
-            HasCards = view.Card is not null,
-            VirtualScroll = view.VirtualScroll,
-            Include = view.Include,
-            Compact = view.Compact,
-            Selectable = view.Selectable,
-            FilterEntry = view.FilterEntry,
-            CanEdit = view.EditPermission is not null
-                      && await authorization.HasPermissionAsync(userId, view.EditPermission, ct),
-            SortField = sort?.ColumnName,
-            SortDir = sort?.Direction == GridSortDirection.Descending ? "desc" : "asc",
-            FilterValues = filterValues,
-            FilterOps = filterOps,
-            SetSelections = setSelections
-        };
+        return gate.RunExclusiveAsync(typeof(RaptorGridBuilder),
+            () => PrepareAsync(source, source.BuildView(), request, ct, deferred));
     }
 
     /// <summary>
-    /// The render-independent half of a grid build: permission-filter the columns, resolve any dynamic Set
-    /// options, bind the request into a <see cref="GridQueryState"/>, apply the user's column order, and
-    /// fetch one page. Returns the typed columns and <b>raw</b> rows — no cells are rendered — so a caller
-    /// can render each cell however it likes (finished-HTML <see cref="GridCell"/> for the partial path, or a
-    /// Blazor <c>RenderFragment</c> template for the <c>&lt;RaptorGrid&gt;</c> component path).
+    /// The non-acquiring twin of <see cref="PrepareAsync{TRow}(IGridSource{TRow}, IEnumerable{KeyValuePair{string, StringValues}}, CancellationToken, bool)"/>
+    /// for a caller that ALREADY holds the request's <see cref="RaptorRenderGate"/> — the grid region's
+    /// <see cref="RaptorSequentialComponent"/> lifecycle. Explicit declaration rather than ambient
+    /// detection: an <c>AsyncLocal</c> marker cannot tell a directly-awaited nested call apart from a
+    /// flow the renderer forked under the holder's context, so reentrancy is granted only here, where the
+    /// caller's type proves the claim.
     /// </summary>
-    public Task<PreparedGrid<TRow>> PrepareAsync<TRow>(
+    internal Task<PreparedGrid<TRow>> PrepareUnderCallerGateAsync<TRow>(
         IGridSource<TRow> source,
         IEnumerable<KeyValuePair<string, StringValues>> request,
         CancellationToken ct = default,
@@ -129,46 +95,6 @@ public sealed class RaptorGridBuilder(
 
         return new PreparedGrid<TRow>(visible, page.Rows, state, page.TotalCount, canEdit);
     }
-
-    /// <summary>
-    /// Renders a single row for an inline-edit swap, using the exact same permission-filtered, user-ordered
-    /// columns as the full grid so the replaced &lt;tr&gt; stays column-aligned with the live header.
-    /// </summary>
-    public async Task<GridRowViewModel> BuildRowAsync<TRow>(
-        IGridSource<TRow> source,
-        TRow row,
-        IEnumerable<KeyValuePair<string, StringValues>> request,
-        CancellationToken ct = default)
-    {
-        var view = source.BuildView();
-        var userId = userContext.UserId;
-
-        var visible = await VisibleColumnsAsync(view.Columns, userId, ct);
-        var state = binder.Bind(request, [.. visible.Select(GridColumnView.From)], view.PageSize, view.ContextParams);
-        visible = ApplyColumnOrder(visible, state.ColumnOrder);
-
-        var cells = new List<GridCell>(visible.Count);
-        foreach (var column in visible)
-            cells.Add(RenderCell(column, row));
-
-        return new GridRowViewModel
-        {
-            GridId = view.Id,
-            Columns = [.. visible.Select(GridColumnView.From)],
-            Row = new GridRow(source.RowKey(row), cells, view.Card?.Invoke(row).Html),
-            Selectable = view.Selectable,
-            CanEdit = view.EditPermission is not null
-                      && await authorization.HasPermissionAsync(userId, view.EditPermission, ct),
-            HasDetail = view.MasterDetail && !string.IsNullOrEmpty(view.DetailUrl),
-            DetailUrl = view.DetailUrl
-        };
-    }
-
-    /// <summary>Typed cell render — the column's renderer, else the compiled accessor's value as text.</summary>
-    private static GridCell RenderCell<TRow>(GridColumn<TRow> column, TRow row) =>
-        column.Cell is { } cell
-            ? cell(row)
-            : GridCell.Text(column.Value?.Invoke(row)?.ToString());
 
     /// <summary>
     /// Fills the <see cref="GridColumn{TRow}.SetOptions"/> of any column that declared a
@@ -278,8 +204,7 @@ public sealed class RaptorGridBuilder(
 /// The render-independent result of <see cref="RaptorGridBuilder.PrepareAsync{TRow}(IGridSource{TRow}, System.Collections.Generic.IEnumerable{System.Collections.Generic.KeyValuePair{string, StringValues}}, System.Threading.CancellationToken, bool)"/>:
 /// the permission-filtered, user-ordered columns (with dynamic Set options resolved), the raw fetched
 /// rows, the bound query state, the total row count and whether the current user may inline-edit. Cells are
-/// not rendered here — the caller renders them (finished-HTML <see cref="GridCell"/> for the partial path,
-/// or a Blazor <c>RenderFragment</c> template for the <c>&lt;RaptorGrid&gt;</c> path).
+/// not rendered here — the <c>&lt;RaptorGrid&gt;</c> component renders them from its markup templates.
 /// </summary>
 public sealed record PreparedGrid<TRow>(
     IReadOnlyList<GridColumn<TRow>> Columns,

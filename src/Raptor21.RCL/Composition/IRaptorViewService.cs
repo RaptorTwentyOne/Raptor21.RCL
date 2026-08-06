@@ -5,15 +5,16 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Raptor21.RCL.Rendering;
 
-namespace Raptor21.RCL.Mvc;
+namespace Raptor21.RCL.Composition;
 
 /// <summary>
-/// Renders a Razor component from an MVC controller (or minimal API): <c>View</c> composes a full page
+/// Renders a Razor component as an <see cref="IResult"/>: <c>View</c> composes a full page
 /// (root + layout + head); <c>PartialView</c> renders just the component as an htmx fragment.
+/// The render seam behind <c>RaptorPage.Page()</c> / <c>Partial()</c>.
 /// </summary>
 public interface IRaptorViewService
 {
-    /// <summary>The current action's path+query — a convenient default form-post target for a view.</summary>
+    /// <summary>The current request's path+query — a convenient default form-post target for a view.</summary>
     string CurrentActionUrl { get; }
 
     /// <summary>Full page, parameters via the strongly-typed builder.</summary>

@@ -11,6 +11,111 @@ default only. Tag and heading below must agree.
 
 ## [Unreleased]
 
+## [0.3.0-preview.1] - 2026-08-06
+
+The MVC era is over. This release removes every server-side-MVC-era surface the original migration
+left behind — tag helpers, `.cshtml` partials, `PageModel` extensions, the markup-columns seam and
+the MVC controller base — and gives the one real architecture, Razor components over htmx, a new
+structural guarantee: **the library never invokes two host data callbacks in parallel within one
+request scope.** A host can therefore hold one plain scoped `DbConnection` per request; the
+connection-per-operation pools and serializing unit-of-work wrappers consumers built to survive
+render parallelism become deletable.
+
+### Removed (breaking)
+
+- **Every tag helper**: `<raptor-grid>`, `<raptor-modal>`, the form-control set (`raptor-field`,
+  `raptor-input`, `raptor-textarea`, `raptor-checkbox`, `raptor-switch`, `raptor-file`,
+  `raptor-date`, `raptor-radio-group`/`raptor-radio`, `raptor-button`, `raptor-select`,
+  `raptor-dropdown`) and the `ITagHelperComponent` that injected assets into `.cshtml` layouts
+  (`<RaptorStyles/>`/`<RaptorScripts/>` are the integration). `RaptorFile` goes with them and has no
+  component equivalent — use `<input type="file" class="rg-file">` plus `ReadFormAsync` in the
+  handler.
+- **The six `Views/Shared` partials** (`_RaptorGrid`, `_RaptorGridBlock`, `_RaptorGridRow`,
+  `_RaptorGridHeaderCell`, `_RaptorGridSentinel`, `_RaptorFilter`) and, with no `.cshtml` left in
+  the package, `AddRazorSupportForMvc`.
+- **The `PageModel` extension surface**: `BuildGridAsync`, `GridPartialAsync`,
+  `GridBlockPartialAsync`, `GridCellPartialAsync`, `BindFilterQuery(PageModel, …)`,
+  `BuildFilterPanel`, `RaptorGridPartials`, `RaptorFilterPartials`, `IFilterSource`, and
+  `RaptorComponentRenderer.RaptorGridComponentAsync`. The `HttpContext` overload of
+  `BindFilterQuery` — the one the component path uses — survives unchanged
+  (`FilterQueryHttpContextExtensions`).
+- **`GridViewModel` / `GridRowViewModel`** and `RaptorGridBuilder.BuildAsync` / `BuildRowAsync`:
+  the finished-HTML projections only the cshtml path consumed. `PrepareAsync` is the one build path.
+- **The `Grid/Markup` set** (`RaptorMarkupGrid`, `RaptorColumnCollector`, `RaptorMarkupGridSink`
+  and the Markup-namespace `RaptorGridColumns`/`RaptorColumn` components). This also removes the
+  `@using` ambiguity between the two `RaptorColumn` types.
+- **`RaptorController`**, **`HtmxRequestAttribute`**, and **`AddRaptorMvc`**.
+
+### Changed (breaking)
+
+- **One entry point.** `AddRaptorRazorComponentLibrary()` and `AddRaptorMvc()` are merged into
+  `AddRaptor21(Action<RaptorOptions>?)` — the name the README always documented. `RaptorOptions`
+  gains `RootComponent` and `DefaultLayout` (bridged to `RaptorConfig`, whose validation still
+  applies), so the shell, layout, asset and htmx settings live on one options object.
+- **`IRaptorViewService` / `RaptorViewService` moved** from `Raptor21.RCL.Mvc` to
+  `Raptor21.RCL.Composition`. They were always the modern path's render seam — `RaptorPage.Page()` /
+  `Partial()` flow through them — only the namespace said otherwise.
+- **`RaptorRenderGate` API**: the raw `WaitAsync`/`Release` pair is replaced by
+  `RunExclusiveAsync(owner, work)` — the primitive a consumer wraps a load in when a component
+  cannot derive `RaptorSequentialComponent`. The gate is deliberately **non-reentrant**: every
+  acquisition queues, because ambient state (`AsyncLocal`) cannot distinguish a directly-awaited
+  nested call from a flow the renderer forked under the holder's `ExecutionContext` — and an
+  inference that guesses wrong silently un-serializes gated work. Consequently, never call an
+  acquiring seam from a lifecycle that already holds the gate (a `RaptorSequentialComponent`
+  lifecycle is already exclusive); misuse fails loudly via the gate's owner-naming timeout.
+- `GridEndpoints`, `ModalSize` and `ButtonVariant`/`ButtonSize` now live in their own files. Same
+  namespaces — no consumer source change.
+- Package description no longer says "Razor Pages"; this is a Razor component library for static
+  SSR.
+
+### Added
+
+- **`raptorGrid.state()` now reports the grid's WHOLE request state**, not only single-value column
+  filters: set (`fs_` checkbox) filters arrive through a new `values` array, and the conditions of every
+  `hx-include`d filter panel (`c[i].field/op/v/v2/vs`, plus the panel's free-text `search`) are read from
+  the same include targets the grid's own POST carries — what filters the table on screen is what the
+  state reports, whichever surface the user set it on. New optional fields `valueTo`/`values` on
+  `RaptorGridFilterState` and `search` on `RaptorGridState` (additive — existing consumers compile
+  unchanged; `raptor21.d.ts` updated). This closes the class of bug where an Excel export built from
+  `state()` silently ignored panel and set filters and shipped the unfiltered table.
+- **The sequential-data-access guarantee.** `RaptorGridBuilder.PrepareAsync` runs its whole data
+  phase — the host's `IGridAuthorization`, `IGridSetOptionsProvider` and
+  `IGridSource.GetPageAsync` callbacks — as one exclusive section under the request's scoped
+  `RaptorRenderGate`. The public overload acquires the gate (for handlers and plain components
+  composing a grid by hand); `<RaptorGrid>`'s region enters through an internal non-acquiring twin,
+  because its `RaptorSequentialComponent` lifecycle already holds the gate — explicit declaration
+  where the caller's type proves the claim, instead of ambient detection that cannot prove it. The
+  component seam is unchanged: `RaptorSequentialComponent` (and with it every `RaptorPage`) still
+  queues its whole lifecycle.
+
+### Migrating from 0.2.0-preview.2
+
+1. **Program.cs** — replace the pair with one call:
+   ```csharp
+   // before
+   builder.Services.AddRaptorRazorComponentLibrary(o => o.Htmx = HtmxDelivery.Never);
+   builder.Services.AddRaptorMvc(c => { c.RootComponent = typeof(HtmxApp<AppShell>); c.DefaultLayout = typeof(RaptorLayout); });
+   // after
+   builder.Services.AddRaptor21(o =>
+   {
+       o.Htmx = HtmxDelivery.Never;
+       o.RootComponent = typeof(HtmxApp<AppShell>);
+       o.DefaultLayout = typeof(RaptorLayout);
+   });
+   ```
+2. Remove every `using Raptor21.RCL.Mvc;` — the namespace no longer exists. At `IRaptorViewService`
+   call sites replace it with `using Raptor21.RCL.Composition;`; elsewhere (e.g. a Program.cs that
+   carried it only for `AddRaptorMvc`) simply delete the line.
+3. `AddControllers().AddApplicationPart(typeof(RaptorGridBuilder).Assembly)` no longer does
+   anything for this package — it ships no controllers and no tag helpers. Drop the application
+   part (and `AddControllers()` itself unless your own app uses MVC).
+4. **Retiring a pooled/serializing unit of work**: with every data-loading component gated (derive
+   `RaptorSequentialComponent`, or wrap the load in `RaptorRenderGate.RunExclusiveAsync`), one
+   scoped connection per request is safe — *provided your own handlers don't `Task.WhenAll` several
+   operations on that one scoped connection.* That parallelism was never the library's; make those
+   awaits sequential or move them to per-request fragments (each fragment request gets its own
+   scope and connection).
+
 ## [0.2.0-preview.2] - 2026-08-04
 
 Additive on top of `0.2.0-preview.1` — no contract breaks. One new component family, two grid UX

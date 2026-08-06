@@ -125,7 +125,8 @@ interface RaptorGridApi {
     form(gridId: string): HTMLFormElement | null;
 
     /**
-     * What the user has currently filtered and sorted a grid by.
+     * The filter and sort state the grid would POST to its own endpoint right now — column filters, set
+     * (checkbox) filters, and the conditions of every `hx-include`d filter panel.
      *
      * Reported in the library's own vocabulary — strings, not your API's enum numbers. Map it to whatever
      * your backend expects. Do not read the region's form yourself, and do not keep a column -> type table
@@ -141,16 +142,25 @@ interface RaptorGridFilterState {
     /** What kind of value the column holds. */
     kind: 'text' | 'number' | 'date';
 
-    /** The chosen comparison — "contains", "equals", "greaterThan", ... */
+    /** The chosen comparison — "contains", "equals", "greaterThan", "in", "between", ... */
     operation: string;
 
-    /** The raw value the user typed or picked. */
+    /** The raw value the user typed or picked. Empty for set filters — see `values`. */
     value: string;
+
+    /** The range's second value, when the operation is a between. */
+    valueTo?: string;
+
+    /** The selections of a set (multi-value) filter. */
+    values?: string[];
 }
 
 interface RaptorGridState {
     filters: RaptorGridFilterState[];
     sort: { column: string; direction: 'asc' | 'desc' } | null;
+
+    /** An included filter panel's free-text search, when one is set. */
+    search: string | null;
 }
 
 /**

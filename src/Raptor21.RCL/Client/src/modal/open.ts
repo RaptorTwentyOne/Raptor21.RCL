@@ -55,8 +55,8 @@ const HAS_DIALOG = typeof HTMLDialogElement !== 'undefined'
  * still gets correct Escape ordering, which is the half that does not need the API" — and this function
  * is the only caller that ever reaches it for a `.rg-modal`, so an early `return` here retracted the
  * promise for every one of them. Two things produce such an element: an engine without `<dialog>`, and a
- * consumer that authored the markup itself (nothing in this package does — `RaptorModal.razor` and
- * `RaptorModalTagHelper` both emit `<dialog>` — but `.rg-modal` is a public class and the stylesheet
+ * consumer that authored the markup itself (nothing in this package does — `RaptorModal.razor`, the sole
+ * modal emitter, renders a `<dialog>` — but `.rg-modal` is a public class and the stylesheet
  * renders it: the closed-state rule is `dialog.rg-modal:not([open])`, element-qualified precisely so the
  * fallback still paints). MEASURED before this line, Chrome 150, real bundles, 390x844, a
  * `<div class="rg-modal" data-rg-component="modal">` grafted into `#modal-container`: it mounted

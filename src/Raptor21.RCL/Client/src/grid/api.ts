@@ -31,11 +31,13 @@ interface RaptorGridApi {
     form(gridId: string): HTMLFormElement | null
 
     /**
-     * What the user has currently filtered and sorted a grid by.
+     * The filter and sort state the grid would POST to its own endpoint right now.
      *
-     * Reads the region's form so callers need not know the `f_` / `fop_` / `sort` / `dir` field-name
-     * prefixes, nor keep their own map of column to data type — the server already encodes the type in
-     * each filter input's `type` attribute.
+     * Reads the region's form so callers need not know the `f_` / `fop_` / `fs_` / `sort` / `dir`
+     * field-name prefixes, nor keep their own map of column to data type — the server already encodes
+     * the type in each filter input's `type` attribute. Because the grid's request also carries every
+     * `hx-include`d filter panel, the state covers those panels' conditions too: what filters the table
+     * on screen is what this reports, whichever surface the user set it on.
      *
      * Reported in this library's own vocabulary: strings, not the numeric enums of any consuming API. A
      * caller maps these onto whatever its backend expects.
@@ -51,16 +53,25 @@ interface RaptorGridFilterState {
     /** What kind of value the column holds, taken from the filter input the server rendered. */
     kind: 'text' | 'number' | 'date'
 
-    /** The chosen comparison. Names match GridFilterOperation. */
+    /** The chosen comparison. Names match GridFilterOperation / FilterOperator, camelCased. */
     operation: string
 
-    /** The raw value the user typed or picked. */
+    /** The raw value the user typed or picked. Empty for set filters — see `values`. */
     value: string
+
+    /** The range's second value, when the operation is a between. */
+    valueTo?: string
+
+    /** The selections of a set (multi-value) filter — a checkbox group, or a panel set condition. */
+    values?: string[]
 }
 
 interface RaptorGridState {
     filters: RaptorGridFilterState[]
     sort: { column: string; direction: 'asc' | 'desc' } | null
+
+    /** An included filter panel's free-text search, when one is set. */
+    search: string | null
 }
 
 declare global {
@@ -87,17 +98,19 @@ export function gridForm(gridId: string): HTMLFormElement | null {
 }
 
 /**
- * Reads a grid's current filter and sort state off the form the region renders.
+ * Reads a grid's current filter and sort state — everything its next POST would carry.
  *
- * The type of each filter comes from the input the server emitted (`type="number"`, `"date"`, otherwise
- * text), which the server derived from the column's GridFilterType when it rendered the popup.
- *
- * Set filters (`fs_` checkbox groups) are not reported: they are a multi-value shape that does not fit
- * the single-`value` model here.
+ * Three sources, mirroring the request the region actually makes:
+ *  - `f_` single-value column filters. The type of each comes from the input the server emitted
+ *    (`type="number"`, `"date"`, otherwise text), which it derived from the column's GridFilterType.
+ *  - `fs_` set (checkbox-group) column filters, reported through `values`.
+ *  - Conditions of every `hx-include`d filter panel (`c[i].field/op/v/v2/vs` and `search`), because the
+ *    grid's own request includes those panels — a state that omitted them would disagree with the table
+ *    it claims to describe, which is exactly how exports came to ignore panel filters.
  */
 export function gridState(gridId: string): RaptorGridState {
     const form = gridForm(gridId)
-    if (!form) return {filters: [], sort: null}
+    if (!form) return {filters: [], sort: null, search: null}
 
     const data = new FormData(form)
     const filters: RaptorGridFilterState[] = []
@@ -114,13 +127,138 @@ export function gridState(gridId: string): RaptorGridState {
         filters.push({column, kind, operation, value})
     }
 
+    // Set filters: the checked boxes ARE the selection. FormData is the source so only checked ones count.
+    const setGroups = new Map<string, string[]>()
+    for (const [name, value] of data) {
+        if (!name.startsWith('fs_') || typeof value !== 'string') continue
+        const column = name.slice(3)
+        const list = setGroups.get(column) ?? []
+        list.push(value)
+        setGroups.set(column, list)
+    }
+    for (const [column, values] of setGroups) {
+        filters.push({column, kind: 'text', operation: 'in', value: '', values})
+    }
+
+    let search: string | null = null
+    for (const panel of includedPanels(form)) {
+        const panelState = panelFilters(panel)
+        filters.push(...panelState.filters)
+        search ??= panelState.search
+    }
+
     const sortColumn = data.get('sort')?.toString()
     const sort = sortColumn
         ? {column: sortColumn, direction: data.get('dir') === 'desc' ? 'desc' as const : 'asc' as const}
         : null
 
-    return {filters, sort}
+    return {filters, sort, search}
 }
+
+/**
+ * The elements a grid form's `hx-include` adds to its request, minus the form itself. Selectors come
+ * from markup the region (and the consumer's Include parameter) wrote, but a bad one must not take
+ * `state()` down with it, hence the guarded parse.
+ */
+function includedPanels(form: HTMLFormElement): Element[] {
+    const include = form.getAttribute('hx-include')
+    if (!include) return []
+
+    const out: Element[] = []
+    for (const raw of include.split(',')) {
+        const selector = raw.trim()
+        if (!selector || selector === `#${form.id}`) continue
+        try {
+            for (const el of document.querySelectorAll(selector)) {
+                if (el !== form && !out.includes(el)) out.push(el)
+            }
+        } catch {
+            // An invalid selector is htmx's problem to report, not state()'s to crash on.
+        }
+    }
+    return out
+}
+
+/** Operators that are complete without a value — a condition carrying one of these is active as-is. */
+const VALUELESS_OPERATORS = new Set(['istrue', 'isfalse', 'isnull', 'isnotnull', 'isempty', 'isnotempty'])
+
+/**
+ * Converts a filter panel's condition fields (`c[i].field`, `.op`, `.v`, `.v2`, repeated `.vs`, plus
+ * `search`) into filter state. Operator names arrive as the server's PascalCase enum names and leave
+ * camelCased, matching the column filters' vocabulary. Conditions with no value are skipped, exactly as
+ * the server-side binder skips them.
+ */
+function panelFilters(panel: Element): { filters: RaptorGridFilterState[]; search: string | null } {
+    const entries: Array<[string, string]> = panel instanceof HTMLFormElement
+        ? [...new FormData(panel)].filter((pair): pair is [string, string] => typeof pair[1] === 'string')
+        : collectEntries(panel)
+
+    const typeByName = new Map<string, string>()
+    for (const input of panel.querySelectorAll<HTMLInputElement>('input[name]')) {
+        typeByName.set(input.name, input.type)
+    }
+
+    const slots = new Map<string, { field?: string; op?: string; v?: string; v2?: string; vs: string[] }>()
+    let search: string | null = null
+
+    for (const [name, value] of entries) {
+        if (name === 'search') {
+            const trimmed = value.trim()
+            if (trimmed) search = trimmed
+            continue
+        }
+
+        const match = /^c\[(\d+)\]\.(field|op|v|v2|vs)$/i.exec(name)
+        if (!match) continue
+
+        let slot = slots.get(match[1])
+        if (!slot) slots.set(match[1], slot = {vs: []})
+
+        switch (match[2].toLowerCase()) {
+            case 'field': slot.field = value; break
+            case 'op': slot.op = value; break
+            case 'v': slot.v = value.trim(); break
+            case 'v2': slot.v2 = value.trim(); break
+            case 'vs': if (value) slot.vs.push(value); break
+        }
+    }
+
+    const filters: RaptorGridFilterState[] = []
+    for (const [index, slot] of slots) {
+        if (!slot.field) continue
+
+        const operation = camelCase(slot.op ?? '')
+            || (slot.vs.length ? 'in' : slot.v2 ? 'between' : 'contains')
+        const active = !!slot.v || !!slot.v2 || slot.vs.length > 0 || VALUELESS_OPERATORS.has(operation.toLowerCase())
+        if (!active) continue
+
+        const inputType = typeByName.get(`c[${index}].v`)
+        const kind = inputType === 'number' ? 'number' as const : inputType === 'date' ? 'date' as const : 'text' as const
+
+        const filter: RaptorGridFilterState = {column: slot.field, kind, operation, value: slot.v ?? ''}
+        if (slot.v2) filter.valueTo = slot.v2
+        if (slot.vs.length) filter.values = slot.vs
+        filters.push(filter)
+    }
+
+    return {filters, search}
+}
+
+/** FormData semantics for a non-form include target: named controls, checked-only for toggles. */
+function collectEntries(scope: Element): Array<[string, string]> {
+    const entries: Array<[string, string]> = []
+    for (const control of scope.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input[name], select[name]')) {
+        if (control instanceof HTMLInputElement) {
+            if ((control.type === 'checkbox' || control.type === 'radio') && !control.checked) continue
+            entries.push([control.name, control.value])
+        } else {
+            for (const option of control.selectedOptions) entries.push([control.name, option.value])
+        }
+    }
+    return entries
+}
+
+const camelCase = (name: string): string => name ? name.charAt(0).toLowerCase() + name.slice(1) : name
 
 /**
  * Reloads every grid under `root`.

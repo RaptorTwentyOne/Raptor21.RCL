@@ -190,7 +190,7 @@ dialog.rg-modal::backdrop { background: none; }
    height that dialog turned out to be.
 
    `sm` needs no exception now — every class is content-sized. `full` does: its contract is "fills the
-   viewport" (`RaptorModalTagHelper`), and it is restated below because the desktop rule it would
+   viewport" (`ModalSize.Full`), and it is restated below because the desktop rule it would
    otherwise inherit computes a different height. */
 @media (max-width: $rg-sheet-max) {
     .rg-modal { padding: 0; align-items: flex-end; }
