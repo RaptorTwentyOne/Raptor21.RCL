@@ -1,8 +1,6 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -10,9 +8,9 @@ namespace Raptor21.RCL.Grid.Components;
 
 /// <summary>
 /// Renders a Razor Component to an HTML string, server-side, with the framework <see cref="HtmlRenderer"/>
-/// — no route, no socket, no interactivity. This is how a grid page answers its <c>OnPostGridAsync</c>: the
-/// grid's htmx form posts to that handler, which re-renders the <c>&lt;RaptorGrid&gt;</c> component for the
-/// new filter/sort/page state and returns the region markup for htmx to swap.
+/// — no route, no socket, no interactivity. This is how a grid's htmx POST is answered: the handler
+/// re-renders the <c>&lt;RaptorGrid&gt;</c> component for the new filter/sort/page state and returns the
+/// region markup for htmx to swap.
 /// </summary>
 public static class RaptorComponentRenderer
 {
@@ -66,18 +64,5 @@ public static class RaptorComponentRenderer
         {
             // Already initialised by the framework; the second call is redundant, not an error.
         }
-    }
-
-    /// <summary>
-    /// Grid POST handler result: renders <typeparamref name="TComponent"/> (the page's grid component) to the
-    /// swapped region markup. Authorization is whatever guards the hosting page — no library route or
-    /// per-call authorization is involved.
-    /// </summary>
-    public static async Task<IActionResult> RaptorGridComponentAsync<TComponent>(this PageModel page)
-        where TComponent : IComponent
-    {
-        ArgumentNullException.ThrowIfNull(page);
-        var html = await RenderToStringAsync<TComponent>(page.HttpContext);
-        return new ContentResult { Content = html, ContentType = "text/html" };
     }
 }

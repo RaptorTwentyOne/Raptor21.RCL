@@ -2,9 +2,9 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.Extensions.DependencyInjection;
+using Raptor21.RCL.Composition;
 using Raptor21.RCL.Endpoints;
 using Raptor21.RCL.Htmx;
-using Raptor21.RCL.Mvc;
 using Raptor21.RCL.Rendering;
 
 namespace Raptor21.RCL.Pages;

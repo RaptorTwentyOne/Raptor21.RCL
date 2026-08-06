@@ -147,8 +147,8 @@ etrafına yazdığı `catch`'e güvenilmez. `run()` **stream bitince** çözül�
 ⚠️ **Kapatmak işi iptal etmez.** ESC/backdrop/× ile kapatılan modalın arkasında stream sürer ve dosya yine
 iner. İptal isteniyorsa `AbortSignal` çağıranın işidir.
 
-⚠️ **Blazor'da `RaptorFile` YOK.** Form kit'in dosya kontrolü bir TagHelper'dır ve yalnız `.cshtml`'den
-kullanılabilir. Blazor tarafında dosya girdisi:
+⚠️ **Form kit'te dosya kontrolü YOK.** (`RaptorFile` bir TagHelper'dı; 0.3.0'da `.cshtml` yüzeyiyle
+birlikte kaldırıldı.) Dosya girdisi:
 `<input type="file" class="rg-file">` + handler'da `await HttpContext.Request.ReadFormAsync(ct)`
 (`RaptorPage` binder'ı `IFormFile` bağlayamaz).
 

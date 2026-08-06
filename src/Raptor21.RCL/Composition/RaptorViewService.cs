@@ -6,11 +6,10 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
-using Raptor21.RCL.Composition;
 using Raptor21.RCL.Htmx;
 using Raptor21.RCL.Rendering;
 
-namespace Raptor21.RCL.Mvc;
+namespace Raptor21.RCL.Composition;
 
 /// <inheritdoc cref="IRaptorViewService"/>
 public sealed class RaptorViewService(IHttpContextAccessor httpContextAccessor) : IRaptorViewService

@@ -1,4 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Raptor21.RCL.Rendering;
 
 namespace Raptor21.RCL.Grid;
 
@@ -6,10 +8,10 @@ namespace Raptor21.RCL.Grid;
 /// Registers the grid engine's two services. That is the whole setup.
 /// <para>
 /// There is no assembly scanning and no grid registry: a grid is owned by the page that declares it
-/// (<see cref="IGridSource{TRow}"/>), and that page is activated by the Razor Pages framework, so nothing
-/// is discovered by reflection or resolved by id. There is also no controller and no route — the page
-/// exposes its own handlers via <see cref="RaptorGridPageExtensions"/>, so this library contributes no
-/// endpoints to the consuming application.
+/// (<see cref="IGridSource{TRow}"/>), so nothing is discovered by reflection or resolved by id. There is
+/// also no controller and no route — the page exposes its own htmx handlers
+/// (<c>[HtmxGet]</c>/<c>[HtmxPost]</c> mapped by <c>MapRaptorPages</c>), so this library contributes no
+/// endpoints of its own to the consuming application.
 /// </para>
 /// <para>
 /// The consumer must also register an <see cref="IGridAuthorization"/> and an
@@ -22,6 +24,9 @@ public static class GridServiceCollectionExtensions
     {
         services.AddSingleton<GridRequestBinder>();
         services.AddScoped<RaptorGridBuilder>();
+        // The builder's data phase runs under the request's render gate; register it here too so
+        // AddRaptorGrid stands alone.
+        services.TryAddScoped<RaptorRenderGate>();
         return services;
     }
 }

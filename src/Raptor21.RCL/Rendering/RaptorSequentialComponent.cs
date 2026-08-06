@@ -36,22 +36,19 @@ public abstract class RaptorSequentialComponent : ComponentBase
     /// A <see cref="ParameterView"/> reads the renderer's live buffer and expires at the first await, so it
     /// is copied before the gate is awaited and replayed afterwards. The copy flattens the cascading flag,
     /// so a derived component must not declare a <see cref="CascadingParameterAttribute"/>; binding one
-    /// throws rather than binding silently. The gate is awaited without
-    /// <c>ConfigureAwait(false)</c> so the lifecycle resumes on the renderer's synchronization context.
+    /// throws rather than binding silently.
+    /// </para>
+    /// <para>
+    /// The lifecycle is already exclusive while it runs — its data access needs no further wrapping. Do
+    /// not call <see cref="RaptorRenderGate.RunExclusiveAsync{T}"/> (or another acquiring seam) from a
+    /// derived lifecycle: the gate is deliberately non-reentrant and the nested acquisition would time
+    /// out. The one library-internal nesting — the grid region invoking the grid builder — goes through
+    /// the builder's internal non-acquiring entry instead.
     /// </para>
     /// </summary>
-    public override async Task SetParametersAsync(ParameterView parameters)
+    public override Task SetParametersAsync(ParameterView parameters)
     {
         var copied = ParameterView.FromDictionary((IDictionary<string, object?>)parameters.ToDictionary());
-
-        await Gate.WaitAsync(GetType());
-        try
-        {
-            await base.SetParametersAsync(copied);
-        }
-        finally
-        {
-            Gate.Release();
-        }
+        return Gate.RunLifecycleAsync(GetType(), () => base.SetParametersAsync(copied));
     }
 }

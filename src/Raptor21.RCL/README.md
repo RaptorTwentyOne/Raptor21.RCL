@@ -19,6 +19,16 @@ builder.Services.AddRaptor21();
 That is the whole integration. There is no `UseRaptor21()` to forget: the middleware that serves the client
 bundle installs itself through an `IStartupFilter`.
 
+An application shell and a default layout are configured on the same call:
+
+```csharp
+builder.Services.AddRaptor21(o =>
+{
+    o.RootComponent = typeof(HtmxApp<AppShell>);   // the full-page html/body shell
+    o.DefaultLayout = typeof(MainLayout);          // layout for pages without [Layout]
+});
+```
+
 Then place the two asset components in your root layout — the stylesheet in `<head>`, the script at the end
 of `<body>`:
 
@@ -42,7 +52,7 @@ reference. Filenames are content-hashed, so responses are immutable and cache fo
 If the package is ever built without its bundle, the application **refuses to start** with an explanatory
 error rather than serving pages with no stylesheet and dead htmx.
 
-## Three things to know before you build on it
+## Four things to know before you build on it
 
 **1. This library owns the `rg-` class prefix.** Do not use it for your own classes.
 
@@ -92,6 +102,45 @@ Two consequences for your stylesheet:
   `will-change` or `contain: paint`. Each of those makes your element a containing block for the panel's
   `position: fixed`, and the panel is then laid out against your box instead of the viewport. Measured: a
   transform on the rail collapsed a sheet from 390px wide to 239px. Move the property to an inner element.
+
+**4. The library never runs two of your data callbacks in parallel in one request — put your own
+data-loading components under the same guarantee.**
+
+Blazor Static SSR starts sibling components' async initializers concurrently: a layout, a page and every
+component on it reach the request's single DI scope at the same time, so a scoped `DbConnection` or ORM
+context sees overlapping calls. This library serializes everything *it* invokes: a grid's whole data phase
+(permission check, set options, page fetch) runs as one exclusive section under a per-request
+`RaptorRenderGate`, and every `RaptorPage` / `RaptorRoutableComponent` / grid-region lifecycle queues on
+that same gate.
+
+A component of yours that loads data in its lifecycle joins the guarantee one of two ways:
+
+```razor
+@inherits Raptor21.RCL.Rendering.RaptorSequentialComponent   @* whole lifecycle under the gate *@
+```
+
+or, where the base class does not fit (it forbids `[CascadingParameter]`):
+
+```csharp
+[Inject] private RaptorRenderGate Gate { get; set; } = default!;
+
+protected override Task OnInitializedAsync() =>
+    Gate.RunExclusiveAsync(GetType(), async () => { _model = await LoadAsync(); });
+```
+
+One rule: **code already under the gate never calls an acquiring seam again.** A
+`RaptorSequentialComponent` lifecycle is already exclusive — calling `RunExclusiveAsync` (or
+`RaptorGridBuilder.PrepareAsync`, which acquires the same gate) from inside one nests acquisitions on a
+deliberately non-reentrant gate and fails after a 60-second timeout with an exception naming the offender.
+The same applies inside a `RunExclusiveAsync` delegate. The gate refuses reentrancy on purpose: ambient state cannot distinguish a
+directly-awaited nested call from a flow the renderer forked under the holder's context, and an inference
+that guesses wrong there silently un-serializes the exact work the gate exists to serialize.
+
+With every data-loading component gated, **one plain scoped connection per request is safe by
+construction** — no connection-per-operation pooling, no serializing wrappers in the host. Parallelism
+belongs to the HTTP layer, where ASP.NET Core already gives one scope per request: each deferred grid load
+(grids defer by default), filter post and modal fetch is its own request with its own scope and its own
+connection.
 
 ## Building from source
 

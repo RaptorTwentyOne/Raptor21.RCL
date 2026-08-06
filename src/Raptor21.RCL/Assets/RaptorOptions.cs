@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Components;
+
 namespace Raptor21.RCL.Assets;
 
 /// <summary>How the library supplies htmx, which it depends on but does not own.</summary>
@@ -14,7 +16,7 @@ public enum HtmxDelivery
 }
 
 /// <summary>
-/// Configuration for the library's asset delivery.
+/// Configuration for the library: asset delivery and page composition.
 /// <para>
 /// The defaults are chosen so that <c>AddRaptor21()</c> with no arguments produces a working page: the
 /// stylesheet and bundle are injected automatically and htmx is supplied only if missing. A host that
@@ -43,4 +45,17 @@ public sealed class RaptorOptions
     /// hash — a changed file is a different URL. Disable only when debugging the pipeline itself.
     /// </summary>
     public bool ImmutableCaching { get; set; } = true;
+
+    /// <summary>
+    /// The full-page root component (the html/body shell). Must be <c>HtmxApp&lt;T&gt;</c> where <c>T</c> is
+    /// the host's layout; validated when the composition options are first read. Null keeps the library
+    /// default (<c>HtmxApp&lt;EmptyLayout&gt;</c>).
+    /// </summary>
+    public Type? RootComponent { get; set; }
+
+    /// <summary>
+    /// Layout applied to any page without a <see cref="LayoutAttribute"/>. Must be a Razor layout;
+    /// validated when the composition options are first read. Null means no default layout.
+    /// </summary>
+    public Type? DefaultLayout { get; set; }
 }

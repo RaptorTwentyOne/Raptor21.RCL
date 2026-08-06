@@ -469,7 +469,9 @@
             http.Request.HasFormContentType ? http.Request.Form : http.Request.Query;
 
         var source = new DelegateGridSource<TRow>(view, ItemsProvider, RowKey);
-        _prepared = await Builder.PrepareAsync(source, request, http.RequestAborted, _deferred);
+        // The non-acquiring entry: this lifecycle (RaptorSequentialComponent) already holds the render
+        // gate, and the gate is deliberately non-reentrant.
+        _prepared = await Builder.PrepareUnderCallerGateAsync(source, request, http.RequestAborted, _deferred);
         (_filterValues, _filterOps, _setSelections) = RaptorGridBuilder.BuildFilterState(_prepared.State);
     }
 
