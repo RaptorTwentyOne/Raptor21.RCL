@@ -94,5 +94,9 @@ generator *diagnostic* (not silent fallback) when an Id'd modal's subtree is not
    when the declaring file's class is routed — a full `Url(...)` with the route's tokens as parameters; an
    opener declared in an unrouted component composes `Routes.<Page>` + `Query` instead; RRG001/RRG002
    diagnostics for duplicate/unusable ids; opt out with `RaptorScanRazorMarkup=false`).
-3. Phase B descriptor registration (prerequisite for 2(a); wanted for reflection-free startup regardless).
+3. ✅ Phase B reflection-free registration — the generator emits `MapGeneratedRaptorPages()`: typed
+   invokers (direct construction + generated parameter binding with the scanner's exact silent-default
+   semantics), alias routes, and statically re-emitted endpoint metadata (RRG003 warns on an attribute it
+   cannot re-emit). Call it INSTEAD OF `MapRaptorPages()`; the reflective scanner stays as the fallback for
+   consumers without the generator. The `RaptorPageInvoker.Prepare` bridge is the one new public library API.
 4. Part 2(a) declarative fragment endpoints for the single-component shape, with diagnostics.
