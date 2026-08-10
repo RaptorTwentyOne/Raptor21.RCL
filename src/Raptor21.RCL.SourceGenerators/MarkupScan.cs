@@ -29,19 +29,14 @@ public static class MarkupScan
     /// endpoint (RFC 0001 semantics (c)).</summary>
     public static IReadOnlyList<string> RaptorModalIds(string markup) => Collect(ModalIdAttribute, markup);
 
-    private static IReadOnlyList<string> Collect(Regex pattern, string markup)
-    {
-        List<string> ids = [];
-        foreach (Match match in pattern.Matches(markup))
-        {
-            var value = match.Groups[1].Value.Trim();
-            // netstandard2.0: string.Contains(char) does not exist.
-            if (value.Length == 0 || value.IndexOf('@') >= 0) continue;
-            if (!ids.Contains(value)) ids.Add(value);
-        }
-
-        return ids;
-    }
+    private static IReadOnlyList<string> Collect(Regex pattern, string markup) =>
+    [
+        .. pattern.Matches(markup).Cast<Match>()
+            .Select(match => match.Groups[1].Value.Trim())
+            // netstandard2.0: string.Contains(char) does not exist, hence IndexOf.
+            .Where(value => value.Length > 0 && value.IndexOf('@') < 0)
+            .Distinct(StringComparer.Ordinal) // keeps first-seen order
+    ];
 
     /// <summary>
     /// The generated class name for a link id: kebab/snake/dotted ids become PascalCase
