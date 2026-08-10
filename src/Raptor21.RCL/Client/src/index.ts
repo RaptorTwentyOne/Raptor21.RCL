@@ -27,6 +27,7 @@ import {installSidebar} from './runtime/sidebar'
 import {installNavigationUx} from './runtime/nav-ux'
 import {installConfirm} from './runtime/confirm'
 import {installModalSkeleton} from './modal/modalSkeleton'
+import {installModalDeepLink} from './runtime/modal-deep-link'
 import {harvest, installAutoHarvest, load, render, store} from './skeleton/blueprint'
 
 define('grid', () => import('./grid/GridRoot').then(m => m.GridRoot))
@@ -75,4 +76,8 @@ declare global {
 window.raptorReady = true
 document.dispatchEvent(new CustomEvent('raptor:ready'))
 
-void ensureHtmx().then(start)
+void ensureHtmx().then(() => {
+    start()
+    // After htmx: the deep link presses a real opener, whose behaviour is usually an htmx trigger.
+    installModalDeepLink()
+})
