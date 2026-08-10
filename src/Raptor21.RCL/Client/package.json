@@ -28,6 +28,7 @@
     "leaflet": "^1.9.4"
   },
   "overrides": {
-    "serialize-javascript": "^7.0.5"
+    "serialize-javascript": "^7.0.5",
+    "webpack-dev-server": "^5.2.6"
   }
 }
