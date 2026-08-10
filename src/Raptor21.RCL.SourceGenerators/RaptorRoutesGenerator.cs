@@ -511,7 +511,7 @@ public sealed partial class RaptorRoutesGenerator : IIncrementalGenerator
             }
         }
 
-        foreach (var p in method.Parameters.Where(p => !consumed.Contains(p.Name)))
+        foreach (var p in method.Parameters.Where(p => !consumed.Contains(p.Name))) // codeql[cs/linq/missed-where] the remaining guard binds its subject (ClassifyParameter)
         {
             // The remaining guard BINDS its subject (a DI-resolved parameter classifies to null), which a
             // .Where could only replicate by re-classifying or null-forgiving — the pattern stays.
@@ -657,7 +657,7 @@ public sealed partial class RaptorRoutesGenerator : IIncrementalGenerator
     private static IEnumerable<PageModel> Deduplicate(ImmutableArray<PageModel> models)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var model in models)
+        foreach (var model in models) // codeql[cs/linq/missed-where] seen.Add is a mutation guard; netstandard2.0 has no DistinctBy
         {
             if (seen.Add(model.Namespace + "." + model.ClassName)) yield return model;
         }

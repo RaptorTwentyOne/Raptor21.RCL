@@ -137,7 +137,7 @@ public sealed class RaptorGridBuilder(
         IReadOnlyList<GridColumn<TRow>> columns, string? userId, CancellationToken ct)
     {
         var result = new List<GridColumn<TRow>>(columns.Count);
-        foreach (var column in columns)
+        foreach (var column in columns) // codeql[cs/linq/missed-where] the filter awaits (permission check); LINQ Where cannot
         {
             if (column.Permission is null || await authorization.HasPermissionAsync(userId, column.Permission, ct))
                 result.Add(column);
@@ -160,7 +160,7 @@ public sealed class RaptorGridBuilder(
         var reordered = new List<GridColumn<TRow>>(middle.Count);
         // Remove-as-guard is deliberate (a duplicate key in the posted order must not duplicate a column),
         // so the first pass stays a foreach; the leftover pass is a plain filter.
-        foreach (var key in order)
+        foreach (var key in order) // codeql[cs/linq/missed-where] byKey.Remove is guard AND mutation: a duplicate posted key must not duplicate a column
             if (byKey.Remove(key, out var col))
                 reordered.Add(col);
         reordered.AddRange(middle.Where(col => byKey.ContainsKey(col.Key)));

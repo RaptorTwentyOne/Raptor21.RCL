@@ -49,7 +49,7 @@ internal static class ComponentMetadataCache
              type is not null && type != typeof(object) && type != ComponentBaseType;
              type = type.BaseType)
         {
-            foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)  // codeql[cs/linq/missed-where] seen.Add is a mutation guard (derived overrides shadow base entries)
                          .Where(property => property.GetCustomAttribute<ParameterAttribute>(inherit: false) is not null))
             {
                 // seen.Add is a mutation, not a filter — a derived class's override must shadow its base's
