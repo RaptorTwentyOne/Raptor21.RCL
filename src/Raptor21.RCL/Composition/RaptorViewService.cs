@@ -95,9 +95,9 @@ public sealed class RaptorViewService(IHttpContextAccessor httpContextAccessor) 
             return new Dictionary<string, object?>(dict, StringComparer.Ordinal);
 
         var result = new Dictionary<string, object?>(StringComparer.Ordinal);
-        foreach (var property in data.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
-            if (property.CanRead)
-                result[property.Name] = property.GetValue(data);
+        foreach (var property in data.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                     .Where(property => property.CanRead))
+            result[property.Name] = property.GetValue(data);
         return result;
     }
 }

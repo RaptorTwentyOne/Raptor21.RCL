@@ -152,13 +152,10 @@ public sealed class RaptorLocalizer : IRaptorLocalizer
     /// <summary>Host overrides first, then the library's own resources.</summary>
     private string? Lookup(string key)
     {
-        foreach (var resources in _options.AdditionalResources)
-        {
-            var value = Safe(resources, key);
-            if (value is not null) return value;
-        }
-
-        return Safe(Own, key);
+        return _options.AdditionalResources
+                   .Select(resources => Safe(resources, key))
+                   .FirstOrDefault(value => value is not null)
+               ?? Safe(Own, key);
     }
 
     /// <summary>

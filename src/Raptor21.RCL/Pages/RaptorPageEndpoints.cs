@@ -30,19 +30,17 @@ public static class RaptorPageEndpoints
                     "No entry assembly to scan; pass the assembly containing your RaptorPages to MapRaptorPages.")
             ];
 
-        foreach (var pageType in assemblies.SelectMany(GetLoadableTypes))
+        foreach (var pageType in assemblies.SelectMany(GetLoadableTypes)
+                     .Where(type => !type.IsAbstract && typeof(RaptorPage).IsAssignableFrom(type)))
         {
-            if (pageType.IsAbstract || !typeof(RaptorPage).IsAssignableFrom(pageType)) continue;
             if (pageType.GetCustomAttribute<RaptorPageAttribute>() is not { } pageAttr) continue;
 
             IReadOnlyList<string> routes = pageAttr.Routes.Count > 0
                 ? pageAttr.Routes
                 : [RaptorRouteConvention.RouteFor(pageType.Name)];
 
-            foreach (var rawRoute in routes)
+            foreach (var basePath in routes.Select(rawRoute => "/" + rawRoute.Trim('/')))
             {
-                var basePath = "/" + rawRoute.Trim('/');
-
                 foreach (var method in pageType.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
                 {
                     if (method.GetCustomAttribute<HtmxHandlerAttribute>() is not { } handler) continue;
@@ -67,9 +65,10 @@ public static class RaptorPageEndpoints
     private static void ApplyMetadata(IEndpointConventionBuilder builder, Type pageType, MethodInfo method)
     {
         var requiresAuth = false;
-        foreach (var attr in pageType.GetCustomAttributes(inherit: true).Concat(method.GetCustomAttributes(inherit: true)))
+        foreach (var attr in pageType.GetCustomAttributes(inherit: true)
+                     .Concat(method.GetCustomAttributes(inherit: true))
+                     .Where(attr => attr is not (HtmxHandlerAttribute or RaptorPageAttribute)))
         {
-            if (attr is HtmxHandlerAttribute or RaptorPageAttribute) continue;
             builder.Add(b => b.Metadata.Add(attr));
             if (attr is IAuthorizeData) requiresAuth = true;
         }

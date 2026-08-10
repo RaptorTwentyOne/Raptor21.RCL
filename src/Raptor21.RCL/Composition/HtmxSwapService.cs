@@ -64,9 +64,15 @@ public sealed class HtmxSwapService(IHttpContextAccessor httpContextAccessor) : 
             builder.OpenComponent(0, typeof(TComponent));
             if (parameters is not null)
             {
+                // ASP0006 wants literal sequence numbers because the diffing algorithm keys on them, but
+                // this fragment is rebuilt from scratch per render (no diffing across renders of the same
+                // fragment instance) and the parameter set is a caller-supplied dictionary — there ARE no
+                // static positions to encode.
+#pragma warning disable ASP0006
                 var seq = 1;
                 foreach (var parameter in parameters)
                     builder.AddComponentParameter(seq++, parameter.Key, parameter.Value);
+#pragma warning restore ASP0006
             }
 
             builder.CloseComponent();

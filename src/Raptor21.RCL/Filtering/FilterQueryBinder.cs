@@ -46,12 +46,8 @@ public sealed partial class FilterQueryBinder
             slot[m.Groups[2].Value] = value;
         }
 
-        List<FilterCondition> conditions = [];
-        foreach (var slot in slots.Values)
-        {
-            if (Build(slot, schema) is { } condition)
-                conditions.Add(condition);
-        }
+        // OfType, not Where + null-forgive: it filters the failed builds out with the type system.
+        List<FilterCondition> conditions = [.. slots.Values.Select(slot => Build(slot, schema)).OfType<FilterCondition>()];
 
         return new FilterQuery
         {
