@@ -27,12 +27,13 @@ public sealed record HtmxConfig
         public string? RequestToken { get; set; }
     }
 
-    /// <summary>Serializes to camelCase JSON (null members omitted) for the htmx-config meta tag.</summary>
-    public string Serialize() => JsonSerializer.Serialize(this, SerializerOptions);
-
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
+    /// <summary>Serializes to camelCase JSON (null members omitted) for the htmx-config meta tag —
+    /// source-generated, so it stays reflection-free under trimming.</summary>
+    public string Serialize() => JsonSerializer.Serialize(this, HtmxConfigJsonContext.Default.HtmxConfig);
 }
+
+[JsonSourceGenerationOptions(
+    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
+[JsonSerializable(typeof(HtmxConfig))]
+internal sealed partial class HtmxConfigJsonContext : JsonSerializerContext;

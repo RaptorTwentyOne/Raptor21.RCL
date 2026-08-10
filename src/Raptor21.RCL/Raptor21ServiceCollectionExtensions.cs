@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Options;
 using Raptor21.RCL.Localization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
@@ -37,6 +37,7 @@ namespace Raptor21.RCL;
 public static class Raptor21ServiceCollectionExtensions
 {
     /// <summary>Registers the entire Raptor21 Razor component library in one call. See the type remarks.</summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Razor Components does not currently support trimming or native AOT (https://aka.ms/aspnet/nativeaot); the whole Raptor21 pipeline inherits that limit.")]
     public static IServiceCollection AddRaptor21(
         this IServiceCollection services, Action<RaptorOptions>? configure = null)
     {

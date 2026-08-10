@@ -162,35 +162,34 @@ public sealed class HtmxResponse(HttpContext context)
         return this;
     }
 
-    /// <summary>Triggers a client-side event (no detail).</summary>
+    /// <summary>Triggers a client-side event (no detail). Deliberately NOT the generic overload's caller:
+    /// no detail means no serialization, so the everyday path stays free of the trim caveat below.</summary>
     public HtmxResponse Trigger(string eventName)
     {
         AssertIsHtmxRequest();
-        MergeTrigger(eventName, (object?)null, null);
+        MergeTrigger(eventName, detailJson: null);
         return this;
     }
 
     /// <summary>Triggers a client-side event carrying a JSON detail payload.</summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(
+        "The detail payload is serialized with reflection-based System.Text.Json; a trimmed application must keep the payload type rooted. Payloads of JSON primitives and collections thereof are unaffected.")]
     public HtmxResponse Trigger<TEventDetail>(string eventName, TEventDetail detail, JsonSerializerOptions? jsonSerializerOptions = null)
     {
         AssertIsHtmxRequest();
-        MergeTrigger(eventName, detail, jsonSerializerOptions);
+        jsonSerializerOptions ??= context.RequestServices.GetService<JsonOptions>()?.SerializerOptions;
+        MergeTrigger(eventName, detail is not null ? JsonSerializer.Serialize(detail, jsonSerializerOptions) : null);
         return this;
     }
 
-    private void MergeTrigger<TEventDetail>(string eventName, TEventDetail? detail, JsonSerializerOptions? jsonSerializerOptions)
+    private void MergeTrigger(string eventName, string? detailJson)
     {
-        jsonSerializerOptions ??= context.RequestServices.GetService<JsonOptions>()?.SerializerOptions;
-
         var set = context.Items.TryGetValue(TriggerItemsKey, out var current) && current is List<TriggerEvent> existing
             ? existing
             : [];
 
         if (!set.Exists(e => e.Name.Equals(eventName, StringComparison.OrdinalIgnoreCase)))
-        {
-            var detailJson = detail is not null ? JsonSerializer.Serialize(detail, jsonSerializerOptions) : null;
             set.Add(new TriggerEvent(eventName, detailJson));
-        }
 
         context.Items[TriggerItemsKey] = set;
 

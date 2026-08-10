@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Components;
+﻿using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Http;
 using Raptor21.RCL.Grid.Components;
 using Raptor21.RCL.Htmx;
@@ -21,7 +21,7 @@ public static class RaptorResults
     /// overload for anything non-trivial; this loosely-typed form is fine for a stable one or two parameters.
     /// </summary>
     /// <example><code>() => RaptorResults.Component&lt;RolesGrid&gt;(("RouteBase", "/roles"))</code></example>
-    public static IResult Component<TComponent>(params (string Name, object? Value)[] parameters)
+    public static IResult Component<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] TComponent>(params (string Name, object? Value)[] parameters)
         where TComponent : IComponent =>
         new RaptorComponentResult<TComponent>(
             parameters.Length == 0
@@ -34,7 +34,7 @@ public static class RaptorResults
     /// type-checked, and <c>[EditorRequired]</c>-enforced at build time.
     /// </summary>
     /// <example><code>() => RaptorResults.Component&lt;RoleModal&gt;(p => p.Add(c => c.RoleId, id))</code></example>
-    public static IResult Component<TComponent>(Action<RaptorParameterBuilder<TComponent>> configure)
+    public static IResult Component<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] TComponent>(Action<RaptorParameterBuilder<TComponent>> configure)
         where TComponent : IComponent
     {
         ArgumentNullException.ThrowIfNull(configure);
@@ -55,7 +55,9 @@ public static class RaptorResults
         public Task ExecuteAsync(HttpContext httpContext)
         {
             if (httpContext.Request.IsHtmx())
+#pragma warning disable IL2026 // the payload is a string: JSON-primitive, unaffected by trimming.
                 httpContext.Response.Htmx().Trigger("raptor:grid-refresh", gridId);
+#pragma warning restore IL2026
             return Task.CompletedTask;
         }
     }
@@ -66,7 +68,7 @@ public static class RaptorResults
 /// <see cref="RaptorComponentRenderer"/>. Prefer the <see cref="RaptorResults.Component{TComponent}(Action{RaptorParameterBuilder{TComponent}})"/>
 /// factory.
 /// </summary>
-public sealed class RaptorComponentResult<TComponent>(IReadOnlyDictionary<string, object?>? parameters) : IResult
+public sealed class RaptorComponentResult<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] TComponent>(IReadOnlyDictionary<string, object?>? parameters) : IResult
     where TComponent : IComponent
 {
     public async Task ExecuteAsync(HttpContext httpContext)

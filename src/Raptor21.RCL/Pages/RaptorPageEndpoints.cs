@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Reflection;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
@@ -20,6 +20,7 @@ public static class RaptorPageEndpoints
     /// Maps every <see cref="RaptorPage"/> handler found in <paramref name="assemblies"/> (the entry assembly by
     /// default). Call once in the endpoint pipeline, alongside <c>MapControllers</c>/<c>MapRazorPages</c>.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Discovers pages by assembly scanning and binds with per-request reflection. Trim-safe consumers should call the source-generated MapGeneratedRaptorPages() instead; this reflective path remains for assemblies built without the generator.")]
     public static IEndpointRouteBuilder MapRaptorPages(this IEndpointRouteBuilder endpoints, params Assembly[] assemblies)
     {
         if (assemblies.Length == 0)
@@ -77,6 +78,7 @@ public static class RaptorPageEndpoints
             builder.Add(b => b.Metadata.Add(new AuthorizeAttribute()));
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Discovers pages by assembly scanning and binds with per-request reflection. Trim-safe consumers should call the source-generated MapGeneratedRaptorPages() instead; this reflective path remains for assemblies built without the generator.")]
     private static async Task<IResult> InvokeAsync(Type pageType, MethodInfo method, HttpContext ctx)
     {
         var page = (RaptorPage)Activator.CreateInstance(pageType)!;
@@ -95,6 +97,7 @@ public static class RaptorPageEndpoints
     }
 
     /// <summary>Bind handler parameters: the context, simple values from route/query, everything else from DI.</summary>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Discovers pages by assembly scanning and binds with per-request reflection. Trim-safe consumers should call the source-generated MapGeneratedRaptorPages() instead; this reflective path remains for assemblies built without the generator.")]
     private static object?[] BindArguments(MethodInfo method, HttpContext ctx)
     {
         var parameters = method.GetParameters();
@@ -119,6 +122,7 @@ public static class RaptorPageEndpoints
         return args;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Discovers pages by assembly scanning and binds with per-request reflection. Trim-safe consumers should call the source-generated MapGeneratedRaptorPages() instead; this reflective path remains for assemblies built without the generator.")]
     private static bool TryBindSimple(Type type, string name, HttpContext ctx, out object? value)
     {
         value = null;
@@ -157,6 +161,7 @@ public static class RaptorPageEndpoints
         return true;
     }
 
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Discovers pages by assembly scanning and binds with per-request reflection. Trim-safe consumers should call the source-generated MapGeneratedRaptorPages() instead; this reflective path remains for assemblies built without the generator.")]
     private static IEnumerable<Type> GetLoadableTypes(Assembly assembly)
     {
         try

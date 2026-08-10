@@ -13,7 +13,10 @@ namespace Raptor21.RCL.Composition;
 public interface IHtmxSwapService
 {
     /// <summary>Adds a component to swap out-of-band into <paramref name="targetId"/>.</summary>
-    void AddSwappableComponent<TComponent>(string targetId, Dictionary<string, object?>? parameters = null,
+    void AddSwappableComponent<
+        [System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(
+            System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] TComponent>(
+        string targetId, Dictionary<string, object?>? parameters = null,
         SwapStyle swapStyle = SwapStyle.outerHTML, string? selector = null) where TComponent : IComponent;
 
     /// <summary>Adds a render fragment to swap out-of-band into <paramref name="targetId"/>.</summary>
@@ -50,7 +53,10 @@ public sealed class HtmxSwapService(IHttpContextAccessor httpContextAccessor) : 
     private readonly record struct ContentItem(ContentKind Kind, string TargetId, SwapStyle SwapStyle, string Selector, RenderFragment Content);
 
     /// <inheritdoc/>
-    public void AddSwappableComponent<TComponent>(string targetId, Dictionary<string, object?>? parameters = null,
+    public void AddSwappableComponent<
+        [System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(
+            System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] TComponent>(
+        string targetId, Dictionary<string, object?>? parameters = null,
         SwapStyle swapStyle = SwapStyle.outerHTML, string? selector = null) where TComponent : IComponent
     {
         RenderFragment component = builder =>

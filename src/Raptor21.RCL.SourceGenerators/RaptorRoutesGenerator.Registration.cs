@@ -192,9 +192,6 @@ public sealed partial class RaptorRoutesGenerator
             {
                 var handler = page.Handlers[hi];
                 var invoker = $"Invoke_{pi}_{hi}_{handler.Name}";
-                var delegateType = handler.Return == ReturnKind.Sync || handler.Return == ReturnKind.Unsupported
-                    ? "global::Microsoft.AspNetCore.Http.IResult"
-                    : "global::System.Threading.Tasks.Task<global::Microsoft.AspNetCore.Http.IResult>";
                 var verbs = handler.Verb == "GET" ? "VerbGet" : "VerbPost";
 
                 var metadata = page.ClassMetadata.Concat(handler.MethodMetadata).ToList();
@@ -206,9 +203,12 @@ public sealed partial class RaptorRoutesGenerator
                     var pattern = handler.Template.Length == 0 ? route : route + handler.Template;
                     var b = $"b{endpointIndex++}";
 
+                    // The RequestDelegate overload, NOT the Delegate one: the latter routes through
+                    // RequestDelegateFactory, which reflects over the delegate (and is [RequiresUnreferencedCode]).
+                    // The invoker executes its IResult itself, so nothing here needs reflection — or RDF's latency.
                     sb.AppendLine($"            var {b} = global::Microsoft.AspNetCore.Builder.EndpointRouteBuilderExtensions.MapMethods(");
                     sb.AppendLine($"                endpoints, \"{pattern}\", {verbs},");
-                    sb.AppendLine($"                new global::System.Func<global::Microsoft.AspNetCore.Http.HttpContext, {delegateType}>({invoker}));");
+                    sb.AppendLine($"                new global::Microsoft.AspNetCore.Http.RequestDelegate({invoker}));");
 
                     if (metadata.Count > 0)
                     {
@@ -245,17 +245,14 @@ public sealed partial class RaptorRoutesGenerator
         {
             // Mapped but throwing at request time — the scanner's own behaviour and message for a handler
             // whose return type it cannot unwrap.
-            sb.AppendLine($"        private static global::Microsoft.AspNetCore.Http.IResult {name}(global::Microsoft.AspNetCore.Http.HttpContext ctx) =>");
+            sb.AppendLine($"        private static global::System.Threading.Tasks.Task {name}(global::Microsoft.AspNetCore.Http.HttpContext ctx) =>");
             sb.AppendLine($"            throw new global::System.InvalidOperationException(\"RaptorPage handler '{page.ClassName}.{handler.Name}' must return IResult, Task<IResult> or ValueTask<IResult>.\");");
             return;
         }
 
         var isAsync = handler.Return != ReturnKind.Sync;
-        var signature = isAsync
-            ? $"private static async global::System.Threading.Tasks.Task<global::Microsoft.AspNetCore.Http.IResult> {name}(global::Microsoft.AspNetCore.Http.HttpContext ctx)"
-            : $"private static global::Microsoft.AspNetCore.Http.IResult {name}(global::Microsoft.AspNetCore.Http.HttpContext ctx)";
 
-        sb.AppendLine($"        {signature}");
+        sb.AppendLine($"        private static async global::System.Threading.Tasks.Task {name}(global::Microsoft.AspNetCore.Http.HttpContext ctx)");
         sb.AppendLine("        {");
         sb.AppendLine($"            var page = global::Raptor21.RCL.Pages.RaptorPageInvoker.Prepare(new {page.FullTypeName}(), ctx);");
 
@@ -286,7 +283,8 @@ public sealed partial class RaptorRoutesGenerator
         var result = isAsync ? $"await {call}" : call;
 
         sb.AppendLine($"            var result = {result};");
-        sb.AppendLine($"            return result ?? throw new global::System.InvalidOperationException(\"RaptorPage handler '{page.ClassName}.{handler.Name}' returned null.\");");
+        sb.AppendLine($"            if (result is null) throw new global::System.InvalidOperationException(\"RaptorPage handler '{page.ClassName}.{handler.Name}' returned null.\");");
+        sb.AppendLine("            await result.ExecuteAsync(ctx);");
         sb.AppendLine("        }");
     }
 

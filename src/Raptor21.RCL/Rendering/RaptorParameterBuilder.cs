@@ -1,4 +1,4 @@
-// Adapted from Rizzy (https://github.com/JalexSocial/Rizzy, MIT) — RizzyComponentParameterBuilder.
+﻿// Adapted from Rizzy (https://github.com/JalexSocial/Rizzy, MIT) — RizzyComponentParameterBuilder.
 
 using System.Linq.Expressions;
 using System.Reflection;
@@ -13,8 +13,9 @@ namespace Raptor21.RCL.Rendering;
 /// silently dropped by <see cref="ParameterView"/>. Reflection metadata is cached per component type.
 /// </summary>
 /// <typeparam name="TComponent">The component the parameters target. Must implement <see cref="IComponent"/>.</typeparam>
-public sealed class RaptorParameterBuilder<TComponent> where TComponent : IComponent
+public sealed class RaptorParameterBuilder<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicProperties)] TComponent> where TComponent : IComponent
 {
+    [System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicProperties)]
     private static readonly Type ComponentType = typeof(TComponent);
 
     private readonly Dictionary<string, object?> _parameters = new(StringComparer.Ordinal);

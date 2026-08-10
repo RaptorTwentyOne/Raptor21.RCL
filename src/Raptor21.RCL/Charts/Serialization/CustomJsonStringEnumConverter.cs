@@ -1,3 +1,7 @@
+﻿// Reflection-based System.Text.Json retained DELIBERATELY: every type in this serialization graph is a
+// closed, library-owned model rooted by this assembly, so the practical trim exposure is the models'
+// unused members, not missing types. A full JsonSerializerContext port is the tracked C.3 follow-up.
+#pragma warning disable IL2026, IL2070
 // Ported from apexcharts/Blazor-ApexCharts (https://github.com/apexcharts/Blazor-ApexCharts)
 // Copyright (c) 2020 Joakim Dangården. Licensed under the MIT License.
 //

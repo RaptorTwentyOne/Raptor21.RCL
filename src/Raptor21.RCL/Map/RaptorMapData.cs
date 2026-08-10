@@ -1,3 +1,7 @@
+﻿// Reflection-based System.Text.Json retained DELIBERATELY: every type in this serialization graph is a
+// closed, library-owned model rooted by this assembly, so the practical trim exposure is the models'
+// unused members, not missing types. A full JsonSerializerContext port is the tracked C.3 follow-up.
+#pragma warning disable IL2026, IL2070
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Raptor21.RCL.Map.Models;

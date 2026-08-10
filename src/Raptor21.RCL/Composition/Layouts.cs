@@ -1,4 +1,4 @@
-// Adapted from Rizzy (https://github.com/JalexSocial/Rizzy, MIT) — the composition layouts.
+﻿// Adapted from Rizzy (https://github.com/JalexSocial/Rizzy, MIT) — the composition layouts.
 
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Rendering;
@@ -11,7 +11,7 @@ namespace Raptor21.RCL.Composition;
 /// The application root component: wraps the rendered content in <see cref="HtmxLayout{T}"/>. Point
 /// <c>RaptorConfig.RootComponent</c> at <c>HtmxApp&lt;YourLayout&gt;</c> (your full-page HTML-document layout).
 /// </summary>
-public sealed class HtmxApp<T> : ComponentBase where T : LayoutComponentBase
+public sealed class HtmxApp<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] T> : ComponentBase where T : LayoutComponentBase
 {
     /// <summary>The rendered view content.</summary>
     [Parameter]
@@ -37,7 +37,10 @@ public sealed class HtmxApp<T> : ComponentBase where T : LayoutComponentBase
 /// HX-History-Restore-Request</c> to every response, so a URL served as a full page, a fragment, or a
 /// restore document is cached under separate keys.
 /// </summary>
-public sealed class HtmxLayout<T> : LayoutComponentBase where T : LayoutComponentBase
+public sealed class HtmxLayout<
+    [System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(
+        System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] T> : LayoutComponentBase
+    where T : LayoutComponentBase
 {
     [CascadingParameter] private HttpContext? HttpContext { get; set; }
 

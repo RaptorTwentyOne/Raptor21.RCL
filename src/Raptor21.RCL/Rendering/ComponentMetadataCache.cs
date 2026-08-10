@@ -26,9 +26,20 @@ internal static class ComponentMetadataCache
     private static readonly ConcurrentDictionary<Type, IReadOnlyList<ParameterMetadata>> Cache = new();
     private static readonly Type ComponentBaseType = typeof(ComponentBase);
 
-    public static IReadOnlyList<ParameterMetadata> GetParameterMetadata(Type componentType) =>
+    public static IReadOnlyList<ParameterMetadata> GetParameterMetadata(
+        [System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(
+            System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicProperties)] Type componentType) =>
         Cache.GetOrAdd(componentType, Calculate);
 
+    // The GetOrAdd value factory and the base-type walk erase the parameter's annotation; what reaches here
+    // is typeof(TComponent) of statically referenced components, whose kept base chain keeps its
+    // [Parameter] properties with it.
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2067",
+        Justification = "Reached only with typeof(TComponent) of statically referenced components.")]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2070",
+        Justification = "Reached only with typeof(TComponent) of statically referenced components.")]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2075",
+        Justification = "Base classes of kept component types are kept together with their [Parameter] properties.")]
     private static IReadOnlyList<ParameterMetadata> Calculate(Type componentType)
     {
         var parameters = new List<ParameterMetadata>();

@@ -1,4 +1,4 @@
-// Adapted from Rizzy (https://github.com/JalexSocial/Rizzy, MIT) — RizzyService.
+﻿// Adapted from Rizzy (https://github.com/JalexSocial/Rizzy, MIT) — RizzyService.
 
 using System.Reflection;
 using Microsoft.AspNetCore.Components;
@@ -23,36 +23,40 @@ public sealed class RaptorViewService(IHttpContextAccessor httpContextAccessor) 
     public string CurrentActionUrl => _currentActionUrl ??= Http.Request.GetEncodedPathAndQuery();
 
     /// <inheritdoc/>
-    public IResult View<TComponent>(Action<RaptorParameterBuilder<TComponent>> configure, ModelStateDictionary? modelState = null)
+    public IResult View<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] TComponent>(Action<RaptorParameterBuilder<TComponent>> configure, ModelStateDictionary? modelState = null)
         where TComponent : IComponent =>
         View<TComponent>(Build(configure), modelState);
 
     /// <inheritdoc/>
-    public IResult View<TComponent>(object? data = null, ModelStateDictionary? modelState = null) where TComponent : IComponent =>
+    public IResult View<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] TComponent>(object? data = null, ModelStateDictionary? modelState = null) where TComponent : IComponent =>
         View<TComponent>(ToDictionary(data), modelState);
 
     /// <inheritdoc/>
-    public IResult View<TComponent>(Dictionary<string, object?> data, ModelStateDictionary? modelState = null) where TComponent : IComponent =>
+    public IResult View<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] TComponent>(Dictionary<string, object?> data, ModelStateDictionary? modelState = null) where TComponent : IComponent =>
         RenderCore(typeof(TComponent), data, modelState, RaptorViewMode.Page, preventStreaming: false);
 
     /// <inheritdoc/>
-    public IResult View(Type componentType, object? data = null, ModelStateDictionary? modelState = null) =>
+    public IResult View([System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] Type componentType, object? data = null, ModelStateDictionary? modelState = null) =>
         RenderCore(componentType, ToDictionary(data), modelState, RaptorViewMode.Page, preventStreaming: false);
 
     /// <inheritdoc/>
-    public IResult PartialView<TComponent>(Action<RaptorParameterBuilder<TComponent>> configure, ModelStateDictionary? modelState = null)
+    public IResult PartialView<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] TComponent>(Action<RaptorParameterBuilder<TComponent>> configure, ModelStateDictionary? modelState = null)
         where TComponent : IComponent =>
         PartialView<TComponent>(Build(configure), modelState);
 
     /// <inheritdoc/>
-    public IResult PartialView<TComponent>(object? data = null, ModelStateDictionary? modelState = null) where TComponent : IComponent =>
+    public IResult PartialView<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] TComponent>(object? data = null, ModelStateDictionary? modelState = null) where TComponent : IComponent =>
         PartialView<TComponent>(ToDictionary(data), modelState);
 
     /// <inheritdoc/>
-    public IResult PartialView<TComponent>(Dictionary<string, object?> data, ModelStateDictionary? modelState = null) where TComponent : IComponent =>
+    public IResult PartialView<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] TComponent>(Dictionary<string, object?> data, ModelStateDictionary? modelState = null) where TComponent : IComponent =>
         RenderCore(typeof(TComponent), data, modelState, RaptorViewMode.Partial, preventStreaming: true);
 
-    private IResult RenderCore(Type componentType, Dictionary<string, object?> data, ModelStateDictionary? modelState, RaptorViewMode mode, bool preventStreaming)
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2110",
+        Justification = "RaptorView's annotated members are set by RazorComponentResult through ParameterView; the values placed in the dictionary flow from DAM-annotated sources in this method.")]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2111",
+        Justification = "Same ParameterView hand-off; every value originates from a DAM(All)-annotated parameter of this method.")]
+    private IResult RenderCore([System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] Type componentType, Dictionary<string, object?> data, ModelStateDictionary? modelState, RaptorViewMode mode, bool preventStreaming)
     {
         if (Http.Response.Htmx().EmptyResponseBodyRequested)
             return Results.NoContent();
@@ -68,7 +72,7 @@ public sealed class RaptorViewService(IHttpContextAccessor httpContextAccessor) 
         return new RazorComponentResult<RaptorView>(parameters) { PreventStreamingRendering = preventStreaming };
     }
 
-    private static Dictionary<string, object?> Build<TComponent>(Action<RaptorParameterBuilder<TComponent>> configure)
+    private static Dictionary<string, object?> Build<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] TComponent>(Action<RaptorParameterBuilder<TComponent>> configure)
         where TComponent : IComponent
     {
         ArgumentNullException.ThrowIfNull(configure);
@@ -77,6 +81,12 @@ public sealed class RaptorViewService(IHttpContextAccessor httpContextAccessor) 
         return builder.Build();
     }
 
+    // Reflection over `data` runs ONLY for the anonymous-object convenience path — null and dictionary
+    // inputs (every library-internal call) never reach it. An anonymous type's members are rooted by its
+    // call-site construction; a trimmed consumer passing a named POCO must keep it rooted. Prefer the typed
+    // builder overload.
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2075",
+        Justification = "Null/dictionary paths are reflection-free; anonymous-object members are rooted by their call-site construction.")]
     private static Dictionary<string, object?> ToDictionary(object? data)
     {
         if (data is null)
