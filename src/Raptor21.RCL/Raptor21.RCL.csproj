@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Razor">
+﻿<Project Sdk="Microsoft.NET.Sdk.Razor">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -10,12 +10,18 @@
     <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>
+    <!-- Trim-analysis is ON for good: the reflective fallbacks are RequiresUnreferencedCode-gated, the
+         component-type flows are DynamicallyAccessedMembers-annotated, and the remaining reflection STJ
+         sites carry justified suppressions. Full NativeAOT stays out of reach until Razor Components
+         supports it (see AddRaptor21). -->
+    <IsTrimmable>true</IsTrimmable>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
   </PropertyGroup>
 
   <PropertyGroup Label="Package">
     <IsPackable>true</IsPackable>
     <PackageId>Raptor21.RCL</PackageId>
-    <Version>0.3.0-preview.5</Version>
+    <Version>0.3.0-preview.6</Version>
     <Description>Server-rendered Razor component library for ASP.NET Core static SSR, driven by htmx: grid, filter, forms, modals, charts and page composition.</Description>
     <PackageTags>razor;razor-components;blazor-ssr;grid;filter;htmx;rcl</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

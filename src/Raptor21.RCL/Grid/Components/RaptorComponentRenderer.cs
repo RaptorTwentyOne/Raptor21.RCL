@@ -14,7 +14,9 @@ namespace Raptor21.RCL.Grid.Components;
 /// </summary>
 public static class RaptorComponentRenderer
 {
-    public static async Task<string> RenderToStringAsync<TComponent>(
+    public static async Task<string> RenderToStringAsync<
+        [System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(
+            System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] TComponent>(
         HttpContext httpContext, IReadOnlyDictionary<string, object?>? parameters = null)
         where TComponent : IComponent
     {

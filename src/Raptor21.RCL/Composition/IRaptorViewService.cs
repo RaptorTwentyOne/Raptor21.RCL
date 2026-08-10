@@ -1,4 +1,4 @@
-// Adapted from Rizzy (https://github.com/JalexSocial/Rizzy, MIT) — IRizzyService.
+﻿// Adapted from Rizzy (https://github.com/JalexSocial/Rizzy, MIT) — IRizzyService.
 
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Http;
@@ -18,29 +18,29 @@ public interface IRaptorViewService
     string CurrentActionUrl { get; }
 
     /// <summary>Full page, parameters via the strongly-typed builder.</summary>
-    IResult View<TComponent>(Action<RaptorParameterBuilder<TComponent>> configure, ModelStateDictionary? modelState = null)
+    IResult View<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] TComponent>(Action<RaptorParameterBuilder<TComponent>> configure, ModelStateDictionary? modelState = null)
         where TComponent : IComponent;
 
     /// <summary>Full page, parameters from an anonymous object / dictionary (null = none).</summary>
-    IResult View<TComponent>(object? data = null, ModelStateDictionary? modelState = null)
+    IResult View<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] TComponent>(object? data = null, ModelStateDictionary? modelState = null)
         where TComponent : IComponent;
 
     /// <summary>Full page, parameters from a dictionary.</summary>
-    IResult View<TComponent>(Dictionary<string, object?> data, ModelStateDictionary? modelState = null)
+    IResult View<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] TComponent>(Dictionary<string, object?> data, ModelStateDictionary? modelState = null)
         where TComponent : IComponent;
 
     /// <summary>Full page for a component known only by <see cref="Type"/> — e.g. a page rendering itself.</summary>
-    IResult View(Type componentType, object? data = null, ModelStateDictionary? modelState = null);
+    IResult View([System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] Type componentType, object? data = null, ModelStateDictionary? modelState = null);
 
     /// <summary>htmx fragment (no layout), parameters via the strongly-typed builder.</summary>
-    IResult PartialView<TComponent>(Action<RaptorParameterBuilder<TComponent>> configure, ModelStateDictionary? modelState = null)
+    IResult PartialView<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] TComponent>(Action<RaptorParameterBuilder<TComponent>> configure, ModelStateDictionary? modelState = null)
         where TComponent : IComponent;
 
     /// <summary>htmx fragment (no layout), parameters from an anonymous object / dictionary (null = none).</summary>
-    IResult PartialView<TComponent>(object? data = null, ModelStateDictionary? modelState = null)
+    IResult PartialView<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] TComponent>(object? data = null, ModelStateDictionary? modelState = null)
         where TComponent : IComponent;
 
     /// <summary>htmx fragment (no layout), parameters from a dictionary.</summary>
-    IResult PartialView<TComponent>(Dictionary<string, object?> data, ModelStateDictionary? modelState = null)
+    IResult PartialView<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] TComponent>(Dictionary<string, object?> data, ModelStateDictionary? modelState = null)
         where TComponent : IComponent;
 }

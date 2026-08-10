@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Components;
+﻿using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.Extensions.DependencyInjection;
@@ -36,14 +36,16 @@ public abstract class RaptorPage : RaptorSequentialComponent
         HttpContext.RequestServices.GetRequiredService<TService>();
 
     /// <summary>Render <b>this</b> page as a full page: root shell + layout + head.</summary>
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2072",
+        Justification = "GetType() of a live page instance: the type was constructed statically (generated registration) and is therefore rooted with its members.")]
     protected IResult Page(ModelStateDictionary? modelState = null) => Views.View(GetType(), data: null, modelState);
 
     /// <summary>Render a component as an htmx fragment (no chrome), parameters via the strongly-typed builder.</summary>
-    protected IResult Partial<TComponent>(Action<RaptorParameterBuilder<TComponent>> configure, ModelStateDictionary? modelState = null)
+    protected IResult Partial<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] TComponent>(Action<RaptorParameterBuilder<TComponent>> configure, ModelStateDictionary? modelState = null)
         where TComponent : IComponent => Views.PartialView(configure, modelState);
 
     /// <summary>Render a component as an htmx fragment (no chrome), parameters from an object/dictionary (null = none).</summary>
-    protected IResult Partial<TComponent>(object? data = null, ModelStateDictionary? modelState = null)
+    protected IResult Partial<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] TComponent>(object? data = null, ModelStateDictionary? modelState = null)
         where TComponent : IComponent => Views.PartialView<TComponent>(data, modelState);
 
     /// <summary>An empty <c>200</c> carrying the <c>HX-Trigger</c> that reloads <paramref name="gridId"/>.</summary>
@@ -55,7 +57,7 @@ public abstract class RaptorPage : RaptorSequentialComponent
     /// carries the grid form's state via <c>hx-include</c>, so page/sort/filters survive the re-render — and the
     /// swapped-in rows show database truth without a dedicated single-row render path.
     /// </summary>
-    protected IResult GridCellSaved<TComponent>(string gridId, Action<RaptorParameterBuilder<TComponent>> configure)
+    protected IResult GridCellSaved<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] TComponent>(string gridId, Action<RaptorParameterBuilder<TComponent>> configure)
         where TComponent : IComponent
     {
         HttpContext.Response.Htmx().Retarget($"#{gridId}-region").Reswap("outerHTML");

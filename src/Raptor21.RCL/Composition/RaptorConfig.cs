@@ -1,5 +1,6 @@
 // Adapted from Rizzy (https://github.com/JalexSocial/Rizzy, MIT) — RizzyConfig.
 
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.AspNetCore.Components;
 
 namespace Raptor21.RCL.Composition;
@@ -10,10 +11,17 @@ namespace Raptor21.RCL.Composition;
 /// </summary>
 public sealed class RaptorConfig
 {
+    // DynamicallyAccessedMembers(All): these types are rendered through OpenComponent(Type)/LayoutView —
+    // the trimmer must keep their whole member surface, and the annotation makes every assignment carry
+    // that requirement to the consumer's typeof() instead of a runtime surprise.
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     private Type? _defaultLayout;
+
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     private Type? _rootComponent = typeof(HtmxApp<EmptyLayout>);
 
     /// <summary>Layout applied to any view without a <see cref="LayoutAttribute"/>. Must be a Razor layout.</summary>
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     public Type? DefaultLayout
     {
         get => _defaultLayout;
@@ -26,6 +34,7 @@ public sealed class RaptorConfig
     }
 
     /// <summary>The full-page root component (the html/body shell). Must be <c>HtmxApp&lt;T&gt;</c>.</summary>
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     public Type? RootComponent
     {
         get => _rootComponent;
