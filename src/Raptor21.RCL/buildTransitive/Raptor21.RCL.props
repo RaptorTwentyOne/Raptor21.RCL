@@ -10,4 +10,13 @@
   <ItemGroup>
     <CompilerVisibleProperty Include="RaptorRoutesClassName" />
   </ItemGroup>
+
+  <!-- Feeds the project's .razor markup to the source generator as AdditionalFiles, which is how
+       data-rg-modal-link="<id>" opener declarations become generated accessor classes (RFC 0001 Part 2(b):
+       <Id>.Url / .Id / .Query). A generator cannot see Razor sources any other way — the Razor compiler's
+       output is not an input to other generators. Opt out per project with
+       <RaptorScanRazorMarkup>false</RaptorScanRazorMarkup>. -->
+  <ItemGroup Condition="'$(RaptorScanRazorMarkup)' != 'false'">
+    <AdditionalFiles Include="**/*.razor" Exclude="**/bin/**;**/obj/**" />
+  </ItemGroup>
 </Project>

@@ -88,7 +88,11 @@ generator *diagnostic* (not silent fallback) when an Id'd modal's subtree is not
 
 1. ✅ Part 1 (parameterless attribute ctor + convention rule + parity test) — shipped: `RaptorRouteConvention`,
    its generator copy, and `RouteConventionParityTests`.
-2. ◐ Part 2(b) anchor semantics — the client half shipped (`?modal=` + `data-rg-modal-link` openers,
-   runtime/modal-deep-link.ts); the `TestModal.Url` emission from AdditionalFiles remains.
+2. ✅ Part 2(b) anchor semantics — client half (`?modal=` + `data-rg-modal-link` openers,
+   runtime/modal-deep-link.ts) and generator half (the package props feed `**/*.razor` in as
+   AdditionalFiles; each literal `data-rg-modal-link="id"` yields an accessor class: `Id`, `Query`, and —
+   when the declaring file's class is routed — a full `Url(...)` with the route's tokens as parameters; an
+   opener declared in an unrouted component composes `Routes.<Page>` + `Query` instead; RRG001/RRG002
+   diagnostics for duplicate/unusable ids; opt out with `RaptorScanRazorMarkup=false`).
 3. Phase B descriptor registration (prerequisite for 2(a); wanted for reflection-free startup regardless).
 4. Part 2(a) declarative fragment endpoints for the single-component shape, with diagnostics.

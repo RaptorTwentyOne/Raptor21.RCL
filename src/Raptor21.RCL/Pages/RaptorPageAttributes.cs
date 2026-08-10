@@ -1,7 +1,7 @@
 namespace Raptor21.RCL.Pages;
 
 /// <summary>
-/// Marks a <see cref="RaptorPage"/> component as a routable page rooted at <paramref name="route"/>. Its
+/// Marks a <see cref="RaptorPage"/> component as a routable page rooted at its <see cref="Route"/>. Its
 /// <see cref="HtmxGetAttribute"/>/<see cref="HtmxPostAttribute"/> handler methods become endpoints under this
 /// path (e.g. route <c>/roles</c> + <c>[HtmxPost("grid")]</c> → <c>POST /roles/grid</c>). Registered by
 /// <see cref="RaptorPageEndpoints.MapRaptorPages"/>.
