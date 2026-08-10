@@ -10,7 +10,8 @@
    htmx swap and the component mounting. *@
 <dialog class="rg-modal" data-rg-component="modal"
         aria-labelledby="@(string.IsNullOrEmpty(Title) ? null : _titleId)"
-        data-rg-modal-static="@(Static ? "" : null)">
+        data-rg-modal-static="@(Static ? "" : null)"
+        data-rg-modal-id="@(string.IsNullOrEmpty(Id) ? null : Id)">
     <div class="@DialogClass" data-rg-modal-dialog>
         @if (!string.IsNullOrEmpty(Title) || Dismissible)
         {
@@ -32,6 +33,14 @@
 </dialog>
 
 @code {
+    /// <summary>
+    /// Names this modal (RFC 0001). A LITERAL id makes the source generator emit an accessor class in the
+    /// declaring component's assembly — <c>TestModal.Url(...)</c>/<c>.Base</c>/<c>.Id</c>, aliasing the
+    /// declaring routed component's own GET endpoint — and the value is rendered as
+    /// <c>data-rg-modal-id</c> for client-side addressing. Host-visible naming stays unbranded by rule.
+    /// </summary>
+    [Parameter] public string? Id { get; set; }
+
     /// <summary>Heading text. Omit to render no header — the content then owns the whole dialog.</summary>
     [Parameter] public string? Title { get; set; }
 

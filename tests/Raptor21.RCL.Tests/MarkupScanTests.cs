@@ -37,6 +37,21 @@ public sealed class MarkupScanTests
         Assert.Equal(["ok"], MarkupScan.ModalLinkIds(markup));
     }
 
+    [Fact]
+    public void Finds_raptor_modal_ids_only_on_raptor_modal_elements()
+    {
+        const string markup =
+            """
+            <RaptorModal Title="Edit" Id="TestModal" Size="ModalSize.Large">
+            <RaptorModal
+                Id="second-modal">
+            <dialog Id="not-a-raptor-modal">
+            <RaptorModal Id="@dynamic">
+            """;
+
+        Assert.Equal(["TestModal", "second-modal"], MarkupScan.RaptorModalIds(markup));
+    }
+
     [Theory]
     [InlineData("user-edit", "UserEdit")]
     [InlineData("TestModal", "TestModal")]

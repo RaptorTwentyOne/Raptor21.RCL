@@ -99,4 +99,9 @@ generator *diagnostic* (not silent fallback) when an Id'd modal's subtree is not
    semantics), alias routes, and statically re-emitted endpoint metadata (RRG003 warns on an attribute it
    cannot re-emit). Call it INSTEAD OF `MapRaptorPages()`; the reflective scanner stays as the fallback for
    consumers without the generator. The `RaptorPageInvoker.Prepare` bridge is the one new public library API.
-4. Part 2(a) declarative fragment endpoints for the single-component shape, with diagnostics.
+4. ✅ Part 2(a), shipped as (c): `RaptorModal` gained an `Id` parameter (rendered as `data-rg-modal-id`),
+   and a literal `<RaptorModal Id="TestModal">` in a ROUTED component's markup generates an alias class —
+   `TestModal.Id` / `.Base` / `.Url(...)` mirroring the declaring component's own base-route GET endpoint,
+   parameters included. In this architecture a modal IS a routed component, so the alias covers the vision
+   without subtree-lifting; an Id in an unrouted component reports RRG004. Full fragment-endpoint lifting
+   (option (a)) stays unimplemented until a real pre-rendered-inline-modal case appears.
