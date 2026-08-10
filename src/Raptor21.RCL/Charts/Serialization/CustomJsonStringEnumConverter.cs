@@ -46,21 +46,17 @@ namespace Raptor21.RCL.Charts.Serialization
         /// <inheritdoc/>
         public override JsonConverter CreateConverter(Type typeToConvert, JsonSerializerOptions options)
         {
-            var query = from field in typeToConvert.GetFields(BindingFlags.Public | BindingFlags.Static)
-                        let attr = field.GetCustomAttribute<EnumMemberAttribute>()
-                        where attr != null
-                        select (field.Name, attr.Value);
+            // ?.Value instead of a null-checked deref: the attribute is touched exactly once, so there is
+            // no access for nullness analysis to doubt.
+            var overrides = typeToConvert
+                .GetFields(BindingFlags.Public | BindingFlags.Static)
+                .Select(field => (field.Name, Value: field.GetCustomAttribute<EnumMemberAttribute>()?.Value))
+                .Where(pair => pair.Value is not null)
+                .ToDictionary(pair => pair.Name, pair => pair.Value);
 
-            var dictionary = query.ToDictionary(p => p.Item1, p => p.Item2);
-
-            if (dictionary.Count > 0)
-            {
-                return new JsonStringEnumConverter(new DictionaryLookupNamingPolicy(dictionary, namingPolicy), allowIntegerValues).CreateConverter(typeToConvert, options);
-            }
-            else
-            {
-                return new JsonStringEnumConverter(JsonNamingPolicy.CamelCase).CreateConverter(typeToConvert, options);
-            }
+            return overrides.Count > 0
+                ? new JsonStringEnumConverter(new DictionaryLookupNamingPolicy(overrides, namingPolicy), allowIntegerValues).CreateConverter(typeToConvert, options)
+                : new JsonStringEnumConverter(JsonNamingPolicy.CamelCase).CreateConverter(typeToConvert, options);
         }
     }
 

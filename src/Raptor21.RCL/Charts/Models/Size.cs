@@ -45,13 +45,8 @@ namespace Raptor21.RCL.Charts.Models
         /// <summary>
         /// Converts a list of ints into a size collection
         /// </summary>
-        public static implicit operator Size(List<int> source) 
-        {
-            if (source == null)
-                return new Size();
-            else
-                return new Size(source.Select(Convert.ToDouble));
-        }
+        public static implicit operator Size(List<int> source) =>
+            source == null ? new Size() : new Size(source.Select(Convert.ToDouble));
 
         /// <summary>
         /// Converts a double into a size collection
