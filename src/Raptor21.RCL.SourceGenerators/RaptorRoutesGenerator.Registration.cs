@@ -73,21 +73,15 @@ public sealed partial class RaptorRoutesGenerator
 
     private static string? TryEmitAttribute(AttributeData attr, INamedTypeSymbol cls)
     {
-        List<string> args = [];
-        foreach (var argument in attr.ConstructorArguments)
-        {
-            var s = EmitTypedConstant(argument);
-            if (s is null) return null;
-            args.Add(s);
-        }
+        List<string?> args = [.. attr.ConstructorArguments.Select(EmitTypedConstant)];
+        if (args.Contains(null)) return null;
 
-        List<string> named = [];
-        foreach (var argument in attr.NamedArguments)
-        {
-            var s = EmitTypedConstant(argument.Value);
-            if (s is null) return null;
-            named.Add($"{argument.Key} = {s}");
-        }
+        List<string?> named =
+        [
+            .. attr.NamedArguments.Select(argument =>
+                EmitTypedConstant(argument.Value) is { } value ? $"{argument.Key} = {value}" : null)
+        ];
+        if (named.Contains(null)) return null;
 
         var ctor = $"new {GlobalTypeName(cls)}({string.Join(", ", args)})";
         return named.Count == 0 ? ctor : $"{ctor} {{ {string.Join(", ", named)} }}";
@@ -122,15 +116,8 @@ public sealed partial class RaptorRoutesGenerator
 
             case TypedConstantKind.Array:
             {
-                List<string> items = [];
-                foreach (var value in constant.Values)
-                {
-                    var s = EmitTypedConstant(value);
-                    if (s is null) return null;
-                    items.Add(s);
-                }
-
-                if (constant.Type is not IArrayTypeSymbol array) return null;
+                List<string?> items = [.. constant.Values.Select(EmitTypedConstant)];
+                if (items.Contains(null) || constant.Type is not IArrayTypeSymbol array) return null;
                 return $"new {GlobalTypeName(array.ElementType)}[] {{ {string.Join(", ", items)} }}";
             }
 
