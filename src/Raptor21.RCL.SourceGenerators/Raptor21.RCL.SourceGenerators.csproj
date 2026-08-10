@@ -8,6 +8,9 @@
     <RootNamespace>Raptor21.RCL.SourceGenerators</RootNamespace>
     <IsRoslynComponent>true</IsRoslynComponent>
     <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <!-- RS2008 wants the analyzer-release-tracking additional files; this generator ships inside the RCL
+         package and versions with it, so that bookkeeping adds nothing here. -->
+    <NoWarn>$(NoWarn);RS2008</NoWarn>
     <!-- Ships inside the Raptor21.RCL package (analyzers/dotnet/cs); never as a package of its own. -->
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
