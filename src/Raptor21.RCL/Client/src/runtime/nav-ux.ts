@@ -209,6 +209,12 @@ function onBeforeRequest(event: Event): void {
     const target = swapTargetOf(detail)
     if (!isPageNavRequest(detail, target)) return
 
+    // A new page navigation SUPERSEDES whatever is still on the wire. Boosted links are distinct
+    // elements, so htmx never aborts across them by itself — and without this, a slow page's late
+    // response (measured with the analytics dashboard) swaps the region BACK over the page the user
+    // actually chose. Same cancel path Back uses; it must run before the new element is recorded.
+    abortInflightNav()
+
     inflightNavElt = detail.requestConfig?.elt instanceof Element ? detail.requestConfig.elt : null
 
     const main = mainContentEl()
