@@ -158,12 +158,12 @@ public sealed class RaptorGridBuilder(
         var byKey = middle.ToDictionary(c => c.Key, StringComparer.OrdinalIgnoreCase);
 
         var reordered = new List<GridColumn<TRow>>(middle.Count);
+        // Remove-as-guard is deliberate (a duplicate key in the posted order must not duplicate a column),
+        // so the first pass stays a foreach; the leftover pass is a plain filter.
         foreach (var key in order)
             if (byKey.Remove(key, out var col))
                 reordered.Add(col);
-        foreach (var col in middle)
-            if (byKey.ContainsKey(col.Key))
-                reordered.Add(col);
+        reordered.AddRange(middle.Where(col => byKey.ContainsKey(col.Key)));
 
         return
         [

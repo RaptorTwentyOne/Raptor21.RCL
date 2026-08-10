@@ -55,11 +55,8 @@ public sealed class GridRequestBinder
         foreach (var kv in contextParams)
             state.Params[kv.Key] = kv.Value;
 
-        foreach (var kv in form)
-        {
-            if (kv.Key.Length > 4 && kv.Key.StartsWith("ctx_", StringComparison.OrdinalIgnoreCase))
-                state.Params[kv.Key[4..]] = kv.Value.ToString();
-        }
+        foreach (var kv in form.Where(kv => kv.Key.Length > 4 && kv.Key.StartsWith("ctx_", StringComparison.OrdinalIgnoreCase)))
+            state.Params[kv.Key[4..]] = kv.Value.ToString();
     }
 
     private static void BindColumnOrder(IReadOnlyDictionary<string, StringValues> form, IReadOnlyList<GridColumnView> columns, GridQueryState state)

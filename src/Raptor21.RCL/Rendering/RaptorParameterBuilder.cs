@@ -111,13 +111,11 @@ public sealed class RaptorParameterBuilder<[System.Diagnostics.CodeAnalysis.Dyna
     /// </summary>
     public Dictionary<string, object?> Build()
     {
-        foreach (var meta in _metadata)
-        {
-            if (meta.IsEditorRequired && !_parameters.ContainsKey(meta.Name))
-                throw new ArgumentException(
-                    $"Required parameter '{meta.Name}' for component '{ComponentType.FullName}' was not provided " +
-                    "(it is marked [EditorRequired]).");
-        }
+        var missing = _metadata.FirstOrDefault(meta => meta.IsEditorRequired && !_parameters.ContainsKey(meta.Name));
+        if (missing is not null)
+            throw new ArgumentException(
+                $"Required parameter '{missing.Name}' for component '{ComponentType.FullName}' was not provided " +
+                "(it is marked [EditorRequired]).");
 
         return new Dictionary<string, object?>(_parameters, StringComparer.Ordinal);
     }
