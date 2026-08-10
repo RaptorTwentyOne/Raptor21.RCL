@@ -39,7 +39,7 @@ public static class GridFilterAdapter
 
         List<GridFilter> filters = [];
 
-        foreach (var condition in query.Active)
+        foreach (var condition in query.Active) // codeql[cs/linq/missed-where] the guard binds its subject (schema.Field pattern match)
         {
             if (schema.Field(condition.Field) is not { } field) continue;
 

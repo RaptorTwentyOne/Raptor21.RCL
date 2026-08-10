@@ -30,7 +30,7 @@ public static class RaptorPageEndpoints
                     "No entry assembly to scan; pass the assembly containing your RaptorPages to MapRaptorPages.")
             ];
 
-        foreach (var pageType in assemblies.SelectMany(GetLoadableTypes)
+        foreach (var pageType in assemblies.SelectMany(GetLoadableTypes) // codeql[cs/linq/missed-where] the remaining guard binds pageAttr
                      .Where(type => !type.IsAbstract && typeof(RaptorPage).IsAssignableFrom(type)))
         {
             if (pageType.GetCustomAttribute<RaptorPageAttribute>() is not { } pageAttr) continue;
@@ -41,7 +41,7 @@ public static class RaptorPageEndpoints
 
             foreach (var basePath in routes.Select(rawRoute => "/" + rawRoute.Trim('/')))
             {
-                foreach (var method in pageType.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+                foreach (var method in pageType.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)) // codeql[cs/linq/missed-where] the guard binds the handler attribute
                 {
                     if (method.GetCustomAttribute<HtmxHandlerAttribute>() is not { } handler) continue;
 
