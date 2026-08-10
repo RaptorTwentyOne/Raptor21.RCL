@@ -64,10 +64,16 @@ component (`<RaptorModal Id="X"><UserForm UserId="..."/></RaptorModal>` → endp
 lifted to an endpoint, and pretending otherwise would fail at runtime, unpredictably. Requires the Phase B
 descriptor registration (generated endpoints need a public registration API anyway).
 
-**(b) Anchor semantics.** `Url` is the enclosing page's URL plus `?raptor-open=TestModal`; the RCL client
-auto-opens the named modal after load. Trivial to build, zero new endpoint machinery, works for any markup —
-but it is *navigation*, not a fragment fetch, so it answers deep-linking rather than the code-behind
-"post to/open this instance" scenario the vision describes.
+**(b) Anchor semantics.** `Url` is the enclosing page's URL plus `?modal=TestModal`; on load the client
+clicks the opener element declaring `data-rg-modal-link="TestModal"`, so the deep link runs the opener's
+real behaviour (htmx request, skeleton, endpoint permissions) and can never open something the page itself
+could not. Trivial to build, zero new endpoint machinery, works for any markup — but it is *navigation*,
+not a fragment fetch, so it answers deep-linking rather than the code-behind "post to/open this instance"
+scenario the vision describes.
+
+NAMING RULE (applies to this whole RFC): host-visible surface — URLs, query parameters, generated
+identifiers, DOM data attributes — never spells the library brand. The generated class is `Routes`, the
+query parameter is `modal`, and DOM markers use the package's established neutral `data-rg-*` prefix.
 
 **(c) Alias-only.** `Id` just names an instance of an already-`[RaptorComponent]`-routed class; `TestModal.Url`
 is sugar over `Routes.<Class>.Get(...)` with the instance's literal attribute values baked in as
@@ -82,6 +88,7 @@ generator *diagnostic* (not silent fallback) when an Id'd modal's subtree is not
 
 1. ✅ Part 1 (parameterless attribute ctor + convention rule + parity test) — shipped: `RaptorRouteConvention`,
    its generator copy, and `RouteConventionParityTests`.
-2. Part 2(b) anchor semantics: client `?raptor-open` handling + generator emission from AdditionalFiles.
+2. ◐ Part 2(b) anchor semantics — the client half shipped (`?modal=` + `data-rg-modal-link` openers,
+   runtime/modal-deep-link.ts); the `TestModal.Url` emission from AdditionalFiles remains.
 3. Phase B descriptor registration (prerequisite for 2(a); wanted for reflection-free startup regardless).
 4. Part 2(a) declarative fragment endpoints for the single-component shape, with diagnostics.
