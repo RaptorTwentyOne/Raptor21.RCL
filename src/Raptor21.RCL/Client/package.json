@@ -26,5 +26,8 @@
     "apexcharts": "^3.42.0",
     "htmx.org": "^2.0.4",
     "leaflet": "^1.9.4"
+  },
+  "overrides": {
+    "serialize-javascript": "^7.0.5"
   }
 }
