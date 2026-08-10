@@ -78,9 +78,10 @@ public sealed partial class RaptorRoutesGenerator : IIncrementalGenerator
                 // predates collection-builder support (CS9210).
                 return new MarkupFileModel(
                     Path.GetFileNameWithoutExtension(file.Path),
-                    ImmutableArray.CreateRange(MarkupScan.ModalLinkIds(markup)));
+                    ImmutableArray.CreateRange(MarkupScan.ModalLinkIds(markup)),
+                    ImmutableArray.CreateRange(MarkupScan.RaptorModalIds(markup)));
             })
-            .Where(static m => m.Ids.Length > 0);
+            .Where(static m => m.Ids.Length > 0 || m.ModalIds.Length > 0);
 
         var linkInputs = modalLinks.Collect().Combine(pages.Collect().Combine(components.Collect()));
 
@@ -109,6 +110,14 @@ public sealed partial class RaptorRoutesGenerator : IIncrementalGenerator
         "RRG002",
         "Modal link id cannot form a class name",
         "data-rg-modal-link id '{0}' cannot be converted to a C# identifier; use letters/digits with '-', '_', '.' or ' ' separators, starting with a letter",
+        "Raptor21.RCL",
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    private static readonly DiagnosticDescriptor ModalIdInUnroutedComponent = new(
+        "RRG004",
+        "RaptorModal Id in an unrouted component",
+        "RaptorModal Id '{0}' is declared in '{1}.razor', whose class carries no [RaptorPage]/[RaptorComponent] route — there is no endpoint to alias, so no accessor is generated",
         "Raptor21.RCL",
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
@@ -166,6 +175,38 @@ public sealed partial class RaptorRoutesGenerator : IIncrementalGenerator
                 pageByClass.TryGetValue(file.FileClass, out var page);
                 EmitModalLink(sb, id, className, page);
             }
+
+            // RaptorModal Id="…" declarations: alias semantics (RFC 0001 (c)) — in this architecture a modal
+            // IS a routed component, so the instance's URL is that component's own GET endpoint.
+            foreach (var id in file.ModalIds)
+            {
+                if (!seenIds.Add(id))
+                {
+                    spc.ReportDiagnostic(Diagnostic.Create(DuplicateLinkId, Location.None, id));
+                    continue;
+                }
+
+                var className = MarkupScan.PascalIdentifier(id);
+                if (className is null)
+                {
+                    spc.ReportDiagnostic(Diagnostic.Create(UnusableLinkId, Location.None, id));
+                    continue;
+                }
+
+                if (!emittedNames.Add(className))
+                {
+                    spc.ReportDiagnostic(Diagnostic.Create(DuplicateLinkId, Location.None, id));
+                    continue;
+                }
+
+                if (!pageByClass.TryGetValue(file.FileClass, out var page))
+                {
+                    spc.ReportDiagnostic(Diagnostic.Create(ModalIdInUnroutedComponent, Location.None, id, file.FileClass));
+                    continue;
+                }
+
+                EmitModalAlias(sb, id, className, page);
+            }
         }
 
         sb.AppendLine("}");
@@ -217,7 +258,34 @@ public sealed partial class RaptorRoutesGenerator : IIncrementalGenerator
         sb.AppendLine();
     }
 
-    private sealed record MarkupFileModel(string FileClass, ImmutableArray<string> Ids);
+    /// <summary>The alias accessor for one <c>&lt;RaptorModal Id="…"&gt;</c>: the wire id, the declaring
+    /// component's base route, and — when the component has a GET on its base route (the "open" endpoint by
+    /// this codebase's convention) — a <c>Url</c> member mirroring it, parameters included.</summary>
+    private static void EmitModalAlias(StringBuilder sb, string id, string className, PageModel page)
+    {
+        sb.AppendLine($"    /// <summary>Accessors for <c>&lt;RaptorModal Id=\"{id}\"&gt;</c> — an alias over its declaring routed");
+        sb.AppendLine($"    /// component <c>{page.Namespace}.{page.ClassName}</c> (\"{page.PrimaryRoute}\").</summary>");
+        sb.AppendLine($"    internal static class {className}");
+        sb.AppendLine("    {");
+        sb.AppendLine("        /// <summary>The wire id — rendered as <c>data-rg-modal-id</c> on the dialog element.</summary>");
+        sb.AppendLine($"        public const string Id = \"{id}\";");
+        sb.AppendLine();
+        sb.AppendLine("        /// <summary>The declaring component's base route.</summary>");
+        sb.AppendLine($"        public const string Base = \"{page.PrimaryRoute}\";");
+
+        var open = page.Handlers.FirstOrDefault(h => h.Verb == "GET" && h.Template.Length == 0);
+        if (open is not null)
+        {
+            sb.AppendLine();
+            EmitEndpointMember(sb, "Url", open, "        ");
+        }
+
+        sb.AppendLine("    }");
+        sb.AppendLine();
+    }
+
+    private sealed record MarkupFileModel(
+        string FileClass, ImmutableArray<string> Ids, ImmutableArray<string> ModalIds);
 
     private static bool IsValidIdentifier(string value)
     {
@@ -623,15 +691,23 @@ public sealed partial class RaptorRoutesGenerator : IIncrementalGenerator
             if (!memberNames.Add(name)) return; // two same-name same-verb handlers: first wins, scanner would clash too
         }
 
+        sb.AppendLine();
+        EmitEndpointMember(sb, name, handler, "            ");
+    }
+
+    /// <summary>One endpoint accessor member — a const when the handler has no URL-relevant parameters, a
+    /// builder method otherwise. Shared by the Routes classes and the RaptorModal-Id alias classes, which sit
+    /// at different nesting depths — hence the explicit indent.</summary>
+    private static void EmitEndpointMember(StringBuilder sb, string name, HandlerModel handler, string indent)
+    {
         var urlParams = handler.Params.Where(p => !p.IsToken).ToList();
         var tokenParams = handler.Params.Where(p => p.IsToken).ToList();
 
-        sb.AppendLine();
-        sb.AppendLine($"            /// <summary><c>{handler.Verb} {handler.Path}</c> — <c>{handler.Name}</c> handler.</summary>");
+        sb.AppendLine($"{indent}/// <summary><c>{handler.Verb} {handler.Path}</c> — <c>{handler.Name}</c> handler.</summary>");
 
         if (handler.Params.Length == 0)
         {
-            sb.AppendLine($"            public const string {name} = \"{handler.Path}\";");
+            sb.AppendLine($"{indent}public const string {name} = \"{handler.Path}\";");
             return;
         }
 
@@ -644,33 +720,33 @@ public sealed partial class RaptorRoutesGenerator : IIncrementalGenerator
         var signature = string.Join(", ", ordered.Select((p, i) =>
             $"{p.SignatureType} {p.Name}{(i >= firstOptional ? " = null" : "")}"));
 
-        sb.AppendLine($"            public static string {name}({signature})");
-        sb.AppendLine("            {");
-        sb.AppendLine($"                var sb = new global::System.Text.StringBuilder({PathExpression(handler.Path, tokenParams)});");
+        sb.AppendLine($"{indent}public static string {name}({signature})");
+        sb.AppendLine($"{indent}{{");
+        sb.AppendLine($"{indent}    var sb = new global::System.Text.StringBuilder({PathExpression(handler.Path, tokenParams)});");
 
         if (urlParams.Count > 0)
         {
-            sb.AppendLine("                var sep = '?';");
+            sb.AppendLine($"{indent}    var sep = '?';");
             foreach (var p in urlParams)
             {
                 if (p.IsNullable)
                 {
-                    sb.AppendLine($"                if ({p.Name} is {{ }} {p.Name}Value)");
-                    sb.AppendLine("                {");
-                    sb.AppendLine($"                    sb.Append(sep).Append(\"{p.Name}=\").Append({ValueExpression(p.Kind, p.Name + "Value")});");
-                    sb.AppendLine("                    sep = '&';");
-                    sb.AppendLine("                }");
+                    sb.AppendLine($"{indent}    if ({p.Name} is {{ }} {p.Name}Value)");
+                    sb.AppendLine($"{indent}    {{");
+                    sb.AppendLine($"{indent}        sb.Append(sep).Append(\"{p.Name}=\").Append({ValueExpression(p.Kind, p.Name + "Value")});");
+                    sb.AppendLine($"{indent}        sep = '&';");
+                    sb.AppendLine($"{indent}    }}");
                 }
                 else
                 {
-                    sb.AppendLine($"                sb.Append(sep).Append(\"{p.Name}=\").Append({ValueExpression(p.Kind, p.Name)});");
-                    sb.AppendLine("                sep = '&';");
+                    sb.AppendLine($"{indent}    sb.Append(sep).Append(\"{p.Name}=\").Append({ValueExpression(p.Kind, p.Name)});");
+                    sb.AppendLine($"{indent}    sep = '&';");
                 }
             }
         }
 
-        sb.AppendLine("                return sb.ToString();");
-        sb.AppendLine("            }");
+        sb.AppendLine($"{indent}    return sb.ToString();");
+        sb.AppendLine($"{indent}}}");
     }
 
     /// <summary>The path with matched <c>{token}</c> segments replaced by parameter values; unmatched tokens stay

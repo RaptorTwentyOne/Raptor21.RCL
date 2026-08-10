@@ -16,12 +16,23 @@ public static class MarkupScan
         "data-rg-modal-link\\s*=\\s*\"([^\"]*)\"",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+    private static readonly Regex ModalIdAttribute = new(
+        "<RaptorModal\\b[^>]*?\\bId\\s*=\\s*\"([^\"]*)\"",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     /// <summary>Distinct literal link ids in <paramref name="markup"/>, in first-seen order. Values holding a
     /// razor expression (<c>@</c>) are dynamic and skipped; empties too.</summary>
-    public static IReadOnlyList<string> ModalLinkIds(string markup)
+    public static IReadOnlyList<string> ModalLinkIds(string markup) => Collect(LinkAttribute, markup);
+
+    /// <summary>Distinct literal <c>&lt;RaptorModal Id="…"&gt;</c> ids, same rules as
+    /// <see cref="ModalLinkIds"/>. Each becomes an alias accessor over the declaring routed component's own
+    /// endpoint (RFC 0001 semantics (c)).</summary>
+    public static IReadOnlyList<string> RaptorModalIds(string markup) => Collect(ModalIdAttribute, markup);
+
+    private static IReadOnlyList<string> Collect(Regex pattern, string markup)
     {
         List<string> ids = [];
-        foreach (Match match in LinkAttribute.Matches(markup))
+        foreach (Match match in pattern.Matches(markup))
         {
             var value = match.Groups[1].Value.Trim();
             // netstandard2.0: string.Contains(char) does not exist.

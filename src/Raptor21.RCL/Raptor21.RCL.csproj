@@ -15,7 +15,7 @@
   <PropertyGroup Label="Package">
     <IsPackable>true</IsPackable>
     <PackageId>Raptor21.RCL</PackageId>
-    <Version>0.3.0-preview.4</Version>
+    <Version>0.3.0-preview.5</Version>
     <Description>Server-rendered Razor component library for ASP.NET Core static SSR, driven by htmx: grid, filter, forms, modals, charts and page composition.</Description>
     <PackageTags>razor;razor-components;blazor-ssr;grid;filter;htmx;rcl</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
