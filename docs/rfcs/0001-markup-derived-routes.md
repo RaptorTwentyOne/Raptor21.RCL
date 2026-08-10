@@ -8,8 +8,9 @@ Status: **draft** · Builds on: `RaptorRoutesGenerator` (0.3.0-preview.2)
 > the user wants, and reachable from code through a property — `<RaptorModal Id="TestModal"/>` in markup,
 > `TestModal.Url` in the code-behind. The library should resolve what the code is trying to do.
 
-`RaptorRoutes` (shipped) solved the *attribute* half: every `[RaptorPage]`/`[RaptorComponent]` class already
-gets compile-time URL accessors. This RFC covers the two remaining steps: routes that exist **without** being
+`Routes` (shipped — deliberately unbranded, since it lives in host markup; renameable per project via the
+`RaptorRoutesClassName` MSBuild property) solved the *attribute* half: every `[RaptorPage]`/`[RaptorComponent]`
+class already gets compile-time URL accessors. This RFC covers the two remaining steps: routes that exist **without** being
 written, and identity attached to a **markup instance** rather than a class.
 
 ## Part 1 — Convention auto-routes (small, do first)
@@ -31,7 +32,7 @@ Implementation notes:
 * The kebab-case rule lives twice — runtime scanner (`RaptorPageEndpoints`) and generator — because a
   netstandard2.0 analyzer cannot reference the net10.0 library. Guard with a parity test in the (future)
   test project: same inputs, both implementations, identical output.
-* `RaptorRoutes` emission is unchanged: the convention route simply becomes the `Base` const, so consumers
+* `Routes` emission is unchanged: the convention route simply becomes the `Base` const, so consumers
   never write the derived string either.
 
 ## Part 2 — Markup instance identity (the real design question)
@@ -69,7 +70,7 @@ but it is *navigation*, not a fragment fetch, so it answers deep-linking rather 
 "post to/open this instance" scenario the vision describes.
 
 **(c) Alias-only.** `Id` just names an instance of an already-`[RaptorComponent]`-routed class; `TestModal.Url`
-is sugar over `RaptorRoutes.<Class>.Get(...)` with the instance's literal attribute values baked in as
+is sugar over `Routes.<Class>.Get(...)` with the instance's literal attribute values baked in as
 defaults.
 
 **Recommendation:** ship (b) first — it is small, universally applicable, and immediately useful for

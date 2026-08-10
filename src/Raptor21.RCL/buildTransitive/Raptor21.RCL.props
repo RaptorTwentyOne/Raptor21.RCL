@@ -1,0 +1,13 @@
+<Project>
+  <!-- Makes the routes-class-name override visible to the RaptorRoutes source generator. The generated
+       class is named "Routes" by default — deliberately unbranded, because it lives in host markup — and a
+       host that already owns a type called Routes can rename it:
+
+           <PropertyGroup>
+             <RaptorRoutesClassName>AppRoutes</RaptorRoutesClassName>
+           </PropertyGroup>
+  -->
+  <ItemGroup>
+    <CompilerVisibleProperty Include="RaptorRoutesClassName" />
+  </ItemGroup>
+</Project>
