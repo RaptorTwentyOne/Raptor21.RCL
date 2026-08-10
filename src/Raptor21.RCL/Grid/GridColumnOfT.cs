@@ -106,8 +106,22 @@ public sealed record GridColumn<TRow>
     public static GridColumn<TRow> For<TValue>(Expression<Func<TRow, TValue>> selector, string header)
     {
         ArgumentNullException.ThrowIfNull(selector);
-        var accessor = selector.Compile();
-        return new GridColumn<TRow>(MemberName(selector), row => accessor(row), header);
+        var member = Member(selector);
+        return new GridColumn<TRow>(member.Name, AccessorCache.GetOrAdd(member, BuildAccessor), header);
+    }
+
+    // Column definitions are rebuilt on EVERY grid render (IGridSource<TRow>.BuildView runs per request), and
+    // each expression tree is a fresh instance — so caching by expression is impossible and compiling in For()
+    // meant one Compile() per column per request. The selector is constrained to a simple member access, so the
+    // MEMBER is the whole identity: one compiled accessor per (TRow, member) for the process lifetime.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<System.Reflection.MemberInfo, Func<TRow, object?>>
+        AccessorCache = new();
+
+    private static Func<TRow, object?> BuildAccessor(System.Reflection.MemberInfo member)
+    {
+        var row = Expression.Parameter(typeof(TRow), "row");
+        var body = Expression.Convert(Expression.MakeMemberAccess(row, member), typeof(object));
+        return Expression.Lambda<Func<TRow, object?>>(body, row).Compile();
     }
 
     /// <summary>
@@ -120,10 +134,10 @@ public sealed record GridColumn<TRow>
         return new GridColumn<TRow>(name, null, header);
     }
 
-    private static string MemberName<TValue>(Expression<Func<TRow, TValue>> selector) => selector.Body switch
+    private static System.Reflection.MemberInfo Member<TValue>(Expression<Func<TRow, TValue>> selector) => selector.Body switch
     {
-        MemberExpression m => m.Member.Name,
-        UnaryExpression { Operand: MemberExpression m } => m.Member.Name,
+        MemberExpression m => m.Member,
+        UnaryExpression { Operand: MemberExpression m } => m.Member,
         _ => throw new ArgumentException(
             "Column selector must be a simple member access (e.g. o => o.OrderNumber). " +
             "For computed / action columns use GridColumn<T>.Display(name).", nameof(selector))

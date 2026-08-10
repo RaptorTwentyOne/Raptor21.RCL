@@ -39,28 +39,30 @@ public static class RaptorComponentRenderer
         });
     }
 
-    private static readonly System.Reflection.MethodInfo? NavInitialize =
-        typeof(NavigationManager).GetMethod("Initialize",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
-            [typeof(string), typeof(string)]);
-
     /// <summary>
     /// Seeds the scoped <see cref="NavigationManager"/> with the current request URI. The framework
     /// <see cref="HtmlRenderer"/> does not run the Blazor endpoint, so the manager is otherwise
     /// uninitialised and any component that reads its URI throws. A no-op when it is already initialised.
+    ///
+    /// The seeding goes through <see cref="Microsoft.AspNetCore.Components.Routing.IHostEnvironmentNavigationManager"/>
+    /// — the same public contract the framework's own component endpoint uses — which is what lets this be
+    /// plain interface dispatch instead of the private-member reflection it used to be (the library's
+    /// single worst trim/AOT hazard). A manager that does not implement the interface cannot be seeded and
+    /// is left alone.
     /// </summary>
     private static void InitializeNavigation(IServiceProvider services, HttpContext httpContext)
     {
-        if (NavInitialize is null || services.GetService<NavigationManager>() is not { } nav) return;
+        if (services.GetService<NavigationManager>()
+            is not Microsoft.AspNetCore.Components.Routing.IHostEnvironmentNavigationManager nav) return;
 
         var request = httpContext.Request;
         var baseUri = $"{request.Scheme}://{request.Host}{request.PathBase}/";
         var fullUri = $"{request.Scheme}://{request.Host}{request.PathBase}{request.Path}{request.QueryString}";
         try
         {
-            NavInitialize.Invoke(nav, [baseUri, fullUri]);
+            nav.Initialize(baseUri, fullUri);
         }
-        catch (System.Reflection.TargetInvocationException)
+        catch (InvalidOperationException)
         {
             // Already initialised by the framework; the second call is redundant, not an error.
         }
