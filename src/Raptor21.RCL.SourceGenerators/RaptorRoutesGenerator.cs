@@ -40,7 +40,7 @@ namespace Raptor21.RCL.SourceGenerators;
 /// RaptorPage/RaptorComponent are not discovered (ForAttributeWithMetadataName matches exact names).
 /// </summary>
 [Generator]
-public sealed class RaptorRoutesGenerator : IIncrementalGenerator
+public sealed partial class RaptorRoutesGenerator : IIncrementalGenerator
 {
     private const string PageAttribute = "Raptor21.RCL.Pages.RaptorPageAttribute";
     private const string ComponentAttribute = "Raptor21.RCL.Pages.RaptorComponentAttribute";
@@ -86,6 +86,15 @@ public sealed class RaptorRoutesGenerator : IIncrementalGenerator
 
         context.RegisterSourceOutput(linkInputs, static (spc, pair) =>
             EmitModalLinks(spc, pair.Left, pair.Right.Left.AddRange(pair.Right.Right)));
+
+        // Phase B: reflection-free endpoint registration. One generated MapGeneratedRaptorPages() replaces
+        // the reflective scanner for this compilation — typed invokers, generated parameter binding with the
+        // scanner's exact silent-default semantics, statically re-emitted endpoint metadata. See the
+        // Registration partial.
+        var registrationInputs = pages.Collect().Combine(components.Collect());
+
+        context.RegisterSourceOutput(registrationInputs, static (spc, pair) =>
+            EmitRegistration(spc, pair.Left.AddRange(pair.Right)));
     }
 
     private static readonly DiagnosticDescriptor DuplicateLinkId = new(
@@ -248,6 +257,25 @@ public sealed class RaptorRoutesGenerator : IIncrementalGenerator
             return null;
 
         var basePath = "/" + primaryRoute.Trim('/');
+
+        // Alias routes (the attribute's params array): each handler is registered under every one, exactly
+        // as the reflective scanner does. Routes.g.cs keeps pointing URLs at the primary alone.
+        var allRoutes = ImmutableArray.CreateBuilder<string>();
+        allRoutes.Add(basePath);
+        if (attr.ConstructorArguments.Length > 1 && attr.ConstructorArguments[1].Kind == TypedConstantKind.Array)
+        {
+            foreach (var alias in attr.ConstructorArguments[1].Values)
+            {
+                if (alias.Value is string a && !string.IsNullOrWhiteSpace(a))
+                {
+                    var normalized = "/" + a.Trim('/');
+                    if (!allRoutes.Contains(normalized)) allRoutes.Add(normalized);
+                }
+            }
+        }
+
+        var (classMetadata, classSkipped, classRequiresAuth) = CollectMetadata(ClassAttributeChain(type), $"{type.Name}");
+
         var handlers = ImmutableArray.CreateBuilder<HandlerModel>();
 
         foreach (var member in type.GetMembers())
@@ -276,7 +304,20 @@ public sealed class RaptorRoutesGenerator : IIncrementalGenerator
                 _ => "POST",
             };
 
-            handlers.Add(new HandlerModel(method.Name, verb, path, ExtractParams(method, path)));
+            var (methodMetadata, methodSkipped, methodRequiresAuth) =
+                CollectMetadata(method.GetAttributes(), $"{type.Name}.{method.Name}");
+
+            handlers.Add(new HandlerModel(
+                method.Name,
+                verb,
+                path,
+                sub,
+                ClassifyReturn(method.ReturnType),
+                methodMetadata,
+                methodSkipped,
+                methodRequiresAuth,
+                ExtractParams(method, path),
+                ExtractInvokeParams(method)));
         }
 
         if (handlers.Count == 0) return null;
@@ -285,7 +326,86 @@ public sealed class RaptorRoutesGenerator : IIncrementalGenerator
             type.Name,
             type.ContainingNamespace.IsGlobalNamespace ? "" : type.ContainingNamespace.ToDisplayString(),
             basePath,
+            allRoutes.ToImmutable(),
+            "global::" + type.ToDisplayString(),
+            classMetadata,
+            classSkipped,
+            classRequiresAuth,
             handlers.ToImmutable());
+    }
+
+    /// <summary>The class's attributes plus its base classes' (stopping under RaptorPage) — the closest
+    /// symbol-world equivalent of the scanner's <c>GetCustomAttributes(inherit: true)</c>.</summary>
+    private static IEnumerable<AttributeData> ClassAttributeChain(INamedTypeSymbol type)
+    {
+        for (var current = type; current is not null; current = current.BaseType)
+        {
+            var display = current.ToDisplayString();
+            if (display is "object" or "Raptor21.RCL.Pages.RaptorPage" or "Raptor21.RCL.Pages.RaptorRoutableComponent")
+                yield break;
+
+            foreach (var attr in current.GetAttributes()) yield return attr;
+        }
+    }
+
+    private static ReturnKind ClassifyReturn(ITypeSymbol returnType)
+    {
+        if (ImplementsIResult(returnType)) return ReturnKind.Sync;
+
+        if (returnType is INamedTypeSymbol { IsGenericType: true, TypeArguments.Length: 1 } generic &&
+            generic.TypeArguments[0].ToDisplayString() == "Microsoft.AspNetCore.Http.IResult")
+        {
+            var definition = generic.ConstructedFrom.ToDisplayString();
+            // The scanner's result switch matches Task<IResult>/ValueTask<IResult> EXACTLY — Task<SomeResult>
+            // falls through to its throw, and this classification mirrors that.
+            if (definition == "System.Threading.Tasks.Task<TResult>") return ReturnKind.TaskOfResult;
+            if (definition == "System.Threading.Tasks.ValueTask<TResult>") return ReturnKind.ValueTaskOfResult;
+        }
+
+        return ReturnKind.Unsupported;
+    }
+
+    private static bool ImplementsIResult(ITypeSymbol type) =>
+        type.ToDisplayString() == "Microsoft.AspNetCore.Http.IResult" ||
+        type.AllInterfaces.Any(i => i.ToDisplayString() == "Microsoft.AspNetCore.Http.IResult");
+
+    /// <summary>Every parameter of a handler, in order, classified the way the scanner's BindArguments binds
+    /// them: the context, the request's own CancellationToken, a simple route/query value, or a service.</summary>
+    private static ImmutableArray<InvokeParam> ExtractInvokeParams(IMethodSymbol method)
+    {
+        var builder = ImmutableArray.CreateBuilder<InvokeParam>();
+
+        foreach (var p in method.Parameters)
+        {
+            var display = p.Type.ToDisplayString();
+
+            if (display == "Microsoft.AspNetCore.Http.HttpContext")
+            {
+                builder.Add(new InvokeParam(InvokeParamKind.Context, p.Name, SimpleKind.String, false, "", false));
+            }
+            else if (display == "System.Threading.CancellationToken")
+            {
+                builder.Add(new InvokeParam(InvokeParamKind.Cancellation, p.Name, SimpleKind.String, false, "", false));
+            }
+            else if (ClassifyParameter(p) is { } simple)
+            {
+                builder.Add(new InvokeParam(InvokeParamKind.Simple, p.Name, simple.Kind, simple.IsNullable, simple.Signature, false));
+            }
+            else
+            {
+                // The scanner resolves everything else from DI, defaulting only when the parameter declares a
+                // default; a missing service without one throws. Value-typed service parameters cannot take
+                // the null default, so they keep the throwing path.
+                var serviceType = display.EndsWith("?", StringComparison.Ordinal)
+                    ? display.Substring(0, display.Length - 1)
+                    : display;
+                var allowNull = p.HasExplicitDefaultValue && p.Type.IsReferenceType;
+
+                builder.Add(new InvokeParam(InvokeParamKind.Service, p.Name, SimpleKind.String, false, "global::" + serviceType, allowNull));
+            }
+        }
+
+        return builder.ToImmutable();
     }
 
     private static AttributeData? FindHandlerAttribute(IMethodSymbol method)
@@ -603,9 +723,50 @@ public sealed class RaptorRoutesGenerator : IIncrementalGenerator
         string ClassName,
         string Namespace,
         string PrimaryRoute,
+        ImmutableArray<string> AllRoutes,
+        string FullTypeName,
+        ImmutableArray<string> ClassMetadata,
+        ImmutableArray<string> SkippedMetadata,
+        bool ClassRequiresAuth,
         ImmutableArray<HandlerModel> Handlers);
 
-    private sealed record HandlerModel(string Name, string Verb, string Path, ImmutableArray<ParamModel> Params);
+    private sealed record HandlerModel(
+        string Name,
+        string Verb,
+        string Path,
+        string Template,
+        ReturnKind Return,
+        ImmutableArray<string> MethodMetadata,
+        ImmutableArray<string> SkippedMetadata,
+        bool MethodRequiresAuth,
+        ImmutableArray<ParamModel> Params,
+        ImmutableArray<InvokeParam> InvokeParams);
+
+    private enum ReturnKind
+    {
+        Sync,
+        TaskOfResult,
+        ValueTaskOfResult,
+        Unsupported,
+    }
+
+    private enum InvokeParamKind
+    {
+        Context,
+        Cancellation,
+        Simple,
+        Service,
+    }
+
+    /// <summary>One handler parameter as the generated invoker binds it. For Simple, <c>TypeDisplay</c> is the
+    /// signature type (incl. nullability); for Service, the unannotated service type.</summary>
+    private sealed record InvokeParam(
+        InvokeParamKind Category,
+        string Name,
+        SimpleKind Kind,
+        bool IsNullable,
+        string TypeDisplay,
+        bool AllowNullService);
 
     private sealed record ParamModel(string Name, SimpleKind Kind, bool IsNullable, bool IsToken, string SignatureType);
 
