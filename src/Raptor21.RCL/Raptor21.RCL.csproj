@@ -15,7 +15,7 @@
   <PropertyGroup Label="Package">
     <IsPackable>true</IsPackable>
     <PackageId>Raptor21.RCL</PackageId>
-    <Version>0.3.0-preview.1</Version>
+    <Version>0.3.0-preview.2</Version>
     <Description>Server-rendered Razor component library for ASP.NET Core static SSR, driven by htmx: grid, filter, forms, modals, charts and page composition.</Description>
     <PackageTags>razor;razor-components;blazor-ssr;grid;filter;htmx;rcl</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -38,6 +38,20 @@
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup Label="Source generator">
+    <!-- The RaptorRoutes generator ships INSIDE this package (analyzers/dotnet/cs), so every consumer gets
+         typed route accessors with the same PackageReference they already have — no second package.
+         ReferenceOutputAssembly=false: the generator is a build-time component, never a runtime dependency. -->
+    <ProjectReference Include="..\Raptor21.RCL.SourceGenerators\Raptor21.RCL.SourceGenerators.csproj"
+                      ReferenceOutputAssembly="false"
+                      OutputItemType="Analyzer"
+                      PrivateAssets="all" />
+    <None Include="..\Raptor21.RCL.SourceGenerators\bin\$(Configuration)\netstandard2.0\Raptor21.RCL.SourceGenerators.dll"
+          Pack="true"
+          PackagePath="analyzers/dotnet/cs"
+          Visible="false" />
   </ItemGroup>
 
   <ItemGroup>
