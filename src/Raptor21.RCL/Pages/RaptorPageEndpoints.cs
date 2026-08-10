@@ -34,7 +34,11 @@ public static class RaptorPageEndpoints
             if (pageType.IsAbstract || !typeof(RaptorPage).IsAssignableFrom(pageType)) continue;
             if (pageType.GetCustomAttribute<RaptorPageAttribute>() is not { } pageAttr) continue;
 
-            foreach (var rawRoute in pageAttr.Routes)
+            IReadOnlyList<string> routes = pageAttr.Routes.Count > 0
+                ? pageAttr.Routes
+                : [RaptorRouteConvention.RouteFor(pageType.Name)];
+
+            foreach (var rawRoute in routes)
             {
                 var basePath = "/" + rawRoute.Trim('/');
 

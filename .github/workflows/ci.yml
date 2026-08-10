@@ -39,6 +39,11 @@ jobs:
       - name: Build
         run: dotnet build Raptor21.slnx -c Release --no-restore -p:RaptorBuildClient=true
 
+      # Holds, among others, the RFC 0001 parity contract: the route convention lives both in the runtime
+      # scanner and (as a copy) in the netstandard2.0 source generator, and the tests fail if they drift.
+      - name: Test
+        run: dotnet test Raptor21.slnx -c Release --no-build
+
       # The committed dist must match what the TypeScript produces. If it does not, a .NET-only consumer
       # (who builds without Node and therefore uses the committed bundle) gets different behaviour from CI
       # — the exact drift the committed-dist design has to be defended against.

@@ -80,7 +80,8 @@ generator *diagnostic* (not silent fallback) when an Id'd modal's subtree is not
 
 ## Sequencing
 
-1. Part 1 (parameterless attribute ctor + convention rule + parity test) — independent, small.
+1. ✅ Part 1 (parameterless attribute ctor + convention rule + parity test) — shipped: `RaptorRouteConvention`,
+   its generator copy, and `RouteConventionParityTests`.
 2. Part 2(b) anchor semantics: client `?raptor-open` handling + generator emission from AdditionalFiles.
 3. Phase B descriptor registration (prerequisite for 2(a); wanted for reflection-free startup regardless).
 4. Part 2(a) declarative fragment endpoints for the single-component shape, with diagnostics.

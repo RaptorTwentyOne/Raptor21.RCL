@@ -93,9 +93,15 @@ public sealed class RaptorRoutesGenerator : IIncrementalGenerator
         if (ctx.TargetSymbol is not INamedTypeSymbol type) return null;
 
         var attr = ctx.Attributes[0];
-        if (attr.ConstructorArguments.Length == 0 ||
-            attr.ConstructorArguments[0].Value is not string primaryRoute ||
-            string.IsNullOrWhiteSpace(primaryRoute))
+
+        // No constructor arguments = the convention route (RFC 0001 Part 1), derived from the class name by
+        // the same rule the runtime scanner applies — see RouteConvention's parity contract.
+        string primaryRoute;
+        if (attr.ConstructorArguments.Length == 0)
+            primaryRoute = RouteConvention.RouteFor(type.Name);
+        else if (attr.ConstructorArguments[0].Value is string explicitRoute && !string.IsNullOrWhiteSpace(explicitRoute))
+            primaryRoute = explicitRoute;
+        else
             return null;
 
         var basePath = "/" + primaryRoute.Trim('/');

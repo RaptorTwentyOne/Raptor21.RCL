@@ -7,4 +7,5 @@
   </Folder>
   <Project Path="src/Raptor21.RCL/Raptor21.RCL.csproj" />
   <Project Path="src/Raptor21.RCL.SourceGenerators/Raptor21.RCL.SourceGenerators.csproj" />
+  <Project Path="tests/Raptor21.RCL.Tests/Raptor21.RCL.Tests.csproj" />
 </Solution>
