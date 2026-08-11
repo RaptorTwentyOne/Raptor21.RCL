@@ -70,6 +70,27 @@ public abstract class RaptorPage : RaptorSequentialComponent
     /// </summary>
     protected static IResult GridCellError(string message) =>
         Results.Text(message, statusCode: StatusCodes.Status422UnprocessableEntity);
+
+    /// <summary>
+    /// Answers a successful row reorder (<c>POST {Endpoint}/reorder</c>): re-renders the grid component and
+    /// retargets the swap from the dragged <c>&lt;tr&gt;</c> to the whole grid region — the
+    /// <see cref="GridCellSaved{TComponent}"/> pattern. The reorder POST carries the grid form's state, so
+    /// paging and column order survive, and the swapped-in rows show the stored order rather than the
+    /// client's optimistic move.
+    /// </summary>
+    protected IResult GridRowMoved<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.All)] TComponent>(string gridId, Action<RaptorParameterBuilder<TComponent>> configure)
+        where TComponent : IComponent
+    {
+        HttpContext.Response.Htmx().Retarget($"#{gridId}-region").Reswap("outerHTML");
+        return Partial(configure);
+    }
+
+    /// <summary>
+    /// Rejects a row reorder: a plain-text <c>422</c> whose body the client surfaces before triggering
+    /// <c>raptor:refresh</c>, which puts the rows back in server truth.
+    /// </summary>
+    protected static IResult GridRowMoveError(string message) =>
+        Results.Text(message, statusCode: StatusCodes.Status422UnprocessableEntity);
 }
 
 /// <summary>

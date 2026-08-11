@@ -18,6 +18,8 @@
                       EditPermission="@EditPermission"
                       FilterEntry="FilterEntry"
                       DeferInitialLoad="DeferInitialLoad"
+                      VirtualScroll="VirtualScroll"
+                      RowReorder="RowReorder"
                       MasterDetail="MasterDetail"
                       DetailUrl="@DetailUrl"
                       Card="Card"
@@ -68,6 +70,17 @@
     /// the grid then loads its first page via its own load POST, showing skeleton rows until data arrives.</summary>
     [Parameter]
     public bool DeferInitialLoad { get; set; } = true;
+
+    /// <summary>Continuous (infinite) scroll instead of the pager: the region appends row blocks as the
+    /// user nears the end of the loaded rows and the footer shows "Loaded N of M" instead of page controls.</summary>
+    [Parameter]
+    public bool VirtualScroll { get; set; }
+
+    /// <summary>Drag-and-drop row reordering: a leading drag-handle cell per row. Requires an
+    /// <see cref="Endpoint"/>-relative <c>/reorder</c> route (or an <c>OnPost{Handler}ReorderAsync</c>
+    /// page handler) that persists the move and re-renders the region.</summary>
+    [Parameter]
+    public bool RowReorder { get; set; }
 
     /// <summary>Expandable master-detail rows: a leading expand toggle per row that htmx-fetches <see cref="DetailUrl"/>.</summary>
     [Parameter]

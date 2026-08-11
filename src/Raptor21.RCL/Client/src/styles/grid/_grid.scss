@@ -50,6 +50,26 @@ body.rg-col-resizing .raptor-grid .rg-resize::after { background: var(--rg-accen
 .raptor-grid th.rg-dragging { opacity: .45; }
 .raptor-grid th.rg-drop-left { box-shadow: inset 2px 0 0 var(--rg-accent), inset 0 -1px 0 var(--rg-border); }
 .raptor-grid th.rg-drop-right { box-shadow: inset -2px 0 0 var(--rg-accent), inset 0 -1px 0 var(--rg-border); }
+/* Row reorder: per-row drag handle + horizontal drop indicator — the vertical twin of the
+   th.rg-drop-left/right pair above. The indicator is painted on the row's cells, not on the <tr>
+   itself: a box-shadow on a table-row box is not reliably painted across engines. */
+.raptor-grid td.rg-drag { width: 2.25rem; padding-left: .4rem; padding-right: .4rem; text-align: center; }
+/* The header's empty handle cell and the fixed-layout <col> mirror the td width — under
+   table-layout: fixed the col/first-row width is what actually sizes the column. */
+.raptor-grid .rg-col-drag { width: 2.25rem; }
+.raptor-grid th.rg-drag { width: 2.25rem; padding-left: .4rem; padding-right: .4rem; }
+.raptor-grid .rg-drag-handle { display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; border: 0; border-radius: .25rem; background: none; color: inherit; opacity: .45; cursor: grab; }
+.raptor-grid .rg-drag-handle:hover { opacity: .85; background: rgba(0,0,0,.05); }
+.dark .raptor-grid .rg-drag-handle:hover { background: rgba(255,255,255,.08); }
+.raptor-grid .rg-drag-handle:active { cursor: grabbing; }
+/* Server-disabled handle (an active sort or filter makes a manual order meaningless): kept visible so
+   the column does not jump, but visibly inert. After the hover rules above so equal specificity wins. */
+.raptor-grid .rg-drag-handle.rg-drag-off { cursor: not-allowed; opacity: .2; }
+.raptor-grid .rg-drag-handle.rg-drag-off:hover { background: none; opacity: .2; }
+.dark .raptor-grid .rg-drag-handle.rg-drag-off:hover { background: none; }
+.raptor-grid tr.rg-dragging-row > td { opacity: .45; }
+.raptor-grid tr.rg-drop-above > td { box-shadow: inset 0 2px 0 var(--rg-accent); }
+.raptor-grid tr.rg-drop-below > td { box-shadow: inset 0 -2px 0 var(--rg-accent); }
 /* Inline editing */
 .raptor-grid td.rg-editable { cursor: text; }
 .raptor-grid td.rg-editable:hover { outline: 1px solid var(--rg-accent); outline-offset: -1px; }
@@ -111,6 +131,17 @@ body.rg-col-resizing .raptor-grid .rg-resize::after { background: var(--rg-accen
 /* Nested grids (inside a master-detail panel) don't fill the viewport — they get a bounded body. */
 .raptor-grid.rg-nested .rg-scrollwrap { max-height: 60vh; }
 .raptor-grid tr.rg-sentinel td.rg-loading-row { text-align: center; padding: .85rem 1rem; color: var(--rg-muted); }
+/* Infinite (virtual) scroll. The sentinel row is machinery, not content: it keeps a (tiny) layout box —
+   the IntersectionObserver in VirtualScroll.ts measures geometry, which visibility does not remove —
+   but paints nothing, so the table simply ends at the last loaded row. */
+.raptor-grid[data-rg-virtual="true"] tr[data-rg-sentinel] { visibility: hidden; }
+.raptor-grid[data-rg-virtual="true"] tr[data-rg-sentinel] > td { padding: 0; height: 2px; border: 0; }
+/* Render window for long loaded lists: off-screen rows skip layout/paint and stand in with the
+   intrinsic-size placeholder (~ one default-density row) so scroll geometry stays stable. Data rows
+   only — the sentinel must keep its real box, and hidden detail rows size themselves when opened.
+   Engines that don't apply containment to internal table boxes ignore the pair; it is an
+   optimisation, never a correctness dependency. */
+.raptor-grid[data-rg-virtual="true"] tbody tr[data-row-key] { content-visibility: auto; contain-intrinsic-size: auto 2.6rem; }
 /* Filter popups live at form level and are portaled visually via position:fixed (set by JS). */
 .raptor-grid .rg-pop { position: fixed; z-index: var(--rg-z-popover); display: none; width: 15rem; padding: .625rem; border: 1px solid var(--rg-border); border-radius: .375rem; background: var(--rg-surface); color: var(--rg-fg); box-shadow: 0 10px 30px rgba(0,0,0,.18); }
 .dark .raptor-grid .rg-pop { box-shadow: 0 10px 30px rgba(0,0,0,.5); }
@@ -250,6 +281,7 @@ body.rg-col-resizing .raptor-grid .rg-resize::after { background: var(--rg-accen
 .raptor-grid .rg-ico-empty { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M20 13h-4a4 4 0 0 1-8 0H4v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1zm-.1-2-2.6-5.4A1 1 0 0 0 16.4 5H7.6a1 1 0 0 0-.9.6L4.1 11H10v1a2 2 0 0 0 4 0v-1z'/%3E%3C/svg%3E"); }
 .raptor-grid .rg-ico-close { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm3.5 12.1l-1.4 1.4L12 13.4l-2.1 2.1-1.4-1.4 2.1-2.1-2.1-2.1 1.4-1.4 2.1 2.1 2.1-2.1 1.4 1.4-2.1 2.1z'/%3E%3C/svg%3E"); }
 .raptor-grid .rg-ico-chevron { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9.3 6.7a1 1 0 0 0 0 1.4L13.2 12l-3.9 3.9a1 1 0 1 0 1.4 1.4l4.6-4.6a1 1 0 0 0 0-1.4L10.7 6.7a1 1 0 0 0-1.4 0z'/%3E%3C/svg%3E"); }
+.raptor-grid .rg-ico-drag { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='9' cy='6' r='1.7'/%3E%3Ccircle cx='15' cy='6' r='1.7'/%3E%3Ccircle cx='9' cy='12' r='1.7'/%3E%3Ccircle cx='15' cy='12' r='1.7'/%3E%3Ccircle cx='9' cy='18' r='1.7'/%3E%3Ccircle cx='15' cy='18' r='1.7'/%3E%3C/svg%3E"); }
 /* Master-detail: leading expand toggle + full-width detail row. */
 .raptor-grid .rg-col-expand { width: 2.5rem; }
 .raptor-grid .rg-expand-cell { width: 2.5rem; text-align: center; padding-left: .25rem; padding-right: .25rem; }

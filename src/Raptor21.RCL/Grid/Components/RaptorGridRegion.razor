@@ -28,8 +28,18 @@
     var nextDisabled = pageNo >= totalPages;
     var hasDetail = MasterDetail && !string.IsNullOrEmpty(DetailUrl);
     var hasCards = Card is not null || CardTemplate is not null;
-    var spanCols = columns.Count + (hasDetail ? 1 : 0);
-    var tableMinWidth = columns.Sum(c => c.MinWidth ?? c.Width ?? 130) + (hasDetail ? 40 : 0);
+    var spanCols = columns.Count + (hasDetail ? 1 : 0) + (RowReorder ? 1 : 0);
+    var tableMinWidth = columns.Sum(c => c.MinWidth ?? c.Width ?? 130) + (hasDetail ? 40 : 0) + (RowReorder ? 40 : 0);
+    // Row DnD is only honest against the stored order: under a non-default sort or an active filter the
+    // visible neighbours are not the stored neighbours, so a drop position has no defensible meaning.
+    // The handle cell still renders (the column must not appear and vanish with filter state) but in a
+    // disabled look — decided HERE, on the server, so the client needs no guard of its own.
+    var reorderOff = state.Sorts.Count > 0 || state.Filters.Count > 0;
+    // Virtual scroll: another block exists while the loaded prefix (page * pageSize) hasn't covered the
+    // total. The footer label states that same prefix; VirtualScroll.ts restates it from the DOM after
+    // every append.
+    var hasMoreBlocks = VirtualScroll && state.Page * pageSize < prepared.TotalCount;
+    var loadedCount = Math.Min(state.Page * pageSize, prepared.TotalCount);
     var popupColumns = columns.Where(HasPopup).ToList();
     var formId = $"{Id}-form";
     var regionId = $"{Id}-region";
@@ -43,9 +53,115 @@
     // Only when there is something to open: a grid with no filterable column renders no drawer and no FAB.
     var filterEntryMark = FilterEntry == RaptorGridFilterEntry.PageChrome && popupColumns.Count > 0 ? "" : null;
 
+    // ONE code path renders data rows for both answers this component can give — the full region, and
+    // (on a sentinel's block post) just this page's rows. A local fragment closing over the prepared
+    // locals above, rather than duplicated markup or a parameter-plumbed method.
+    RenderFragment dataRows = @<text>
+        @foreach (var row in prepared.Rows)
+        {
+            var rowKey = RowKey(row);
+            var detailId = $"{Id}-detail-{rowKey}";
+            var detailKey = rowKey + "-detail";
+            <tr data-row-key="@rowKey" @key="rowKey">
+                @if (RowReorder)
+                {
+                    <td class="rg-drag">
+                        <button type="button" class="rg-drag-handle @(reorderOff ? "rg-drag-off" : null)"
+                                data-rg-drag="@(reorderOff ? null : "")"
+                                draggable="@(reorderOff ? null : "true")"
+                                aria-label="Drag to reorder" aria-disabled="@(reorderOff ? "true" : null)"
+                                title="@(reorderOff ? "Reordering is off while the grid is sorted or filtered" : "Drag to reorder")">
+                            <span class="rg-ico rg-ico-drag"></span>
+                        </button>
+                    </td>
+                }
+                @if (hasDetail)
+                {
+                    <td class="rg-expand-cell">
+                        <button type="button" class="rg-expand" data-rg-expand="@detailId"
+                                data-rg-detail-url="@DetailUrl!.Replace("{key}", rowKey)"
+                                aria-expanded="false" aria-label="@L["Grid_ExpandRow"]">
+                            <span class="rg-ico rg-ico-chevron"></span>
+                        </button>
+                    </td>
+                }
+                @foreach (var col in columns)
+                {
+                    var alignCol = col.Align ?? (col.Filter == GridFilterType.Number ? "right" : null);
+                    var editable = prepared.CanEdit && col.Editable && !string.IsNullOrEmpty(col.Editor);
+                    <td data-rg-field="@col.Key" data-label="@col.Header"
+                        class="@AlignClass(alignCol) @(col.Wrap ? "rg-wrap" : null) @(editable ? "rg-editable" : null) @col.CssClass"
+                        data-rg-edit="@(editable ? col.Editor : null)">
+                        @RenderCell(col, row)
+                    </td>
+                }
+                @if (hasCards)
+                {
+                    <td class="rg-card" colspan="@spanCols">
+                        @if (CardTemplate is not null)
+                        {
+                            @CardTemplate(row)
+                        }
+                        else
+                        {
+                            @((MarkupString)Card!(row).Html)
+                        }
+                    </td>
+                }
+            </tr>
+            @if (hasDetail)
+            {
+                <tr class="rg-detail-row" data-detail-row="@rowKey" hidden @key="detailKey">
+                    <td colspan="@spanCols" class="rg-detail-cell">
+                        <div id="@detailId" class="rg-detail">
+                            <div class="rg-detail-loading">
+                                <span class="rg-ico rg-ico-spinner rg-ico-spin"></span> Loading…
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            }
+        }
+    </text>;
+
+    // The sentinel row the next block arrives through. It lives INSIDE the region form, so the non-GET
+    // post carries the form's whole state (filters, sort, colOrder, ctx_*) automatically; hx-vals then
+    // overrides the form's own page with the next one and marks the request as a block request.
+    // GridEndpoints.Block is deliberately NOT used: posting block=1 back to the REGION endpoint means
+    // the host wires no extra handler — this component itself answers with rows + a new sentinel.
+    // hx-target/hx-indicator override the form-inherited ones, which would otherwise re-swap the whole
+    // region and dim every loaded row on each append.
+    // hx-sync overrides the form-inherited "closest form:replace" with "abort": under replace, a
+    // scroll-triggered block post racing a user's filter/sort post would CANCEL the user's request and
+    // append rows of the stale state — the user's typed filter would silently do nothing. With abort the
+    // automatic request yields both ways: it is dropped while a user request is in flight and aborted
+    // when one starts. Either winner re-swaps the region (fresh sentinel), and a failed winner re-arms
+    // the observer through VirtualScroll's unsuccessful-request path, so scrolling never stalls.
+    RenderFragment? sentinel = null;
+    if (hasMoreBlocks)
+    {
+        sentinel = @<tr data-rg-sentinel aria-hidden="true"
+                       hx-post="@_endpoints.Region"
+                       hx-trigger="sgload"
+                       hx-target="this"
+                       hx-swap="outerHTML"
+                       hx-indicator="this"
+                       hx-sync="closest form:abort"
+                       hx-vals="@($"{{\"page\":\"{state.Page + 1}\",\"block\":\"1\"}}")">
+            <td colspan="@spanCols"></td>
+        </tr>;
+    }
+
+    if (_block)
+    {
+        <text>@dataRows@sentinel</text>
+    }
+    else
+    {
     <div id="@regionId" data-rg-component="grid" class="@gridClass"
-         data-grid-id="@Id" data-rg-virtual="false" data-rg-total="@prepared.TotalCount"
+         data-grid-id="@Id" data-rg-virtual="@(VirtualScroll ? "true" : "false")" data-rg-total="@prepared.TotalCount"
          data-rg-filter-entry="@filterEntryMark"
+         data-rg-reorder-endpoint="@(RowReorder ? _endpoints.Reorder : null)"
          data-rg-cell-endpoint="@_endpoints.Cell">
         <form id="@formId"
               class="rg-form"
@@ -70,6 +186,10 @@
             <div id="@(Id)-scroll" class="rg-scrollwrap">
                 <table style="min-width:@(tableMinWidth)px">
                     <colgroup>
+                        @if (RowReorder)
+                        {
+                            <col class="rg-col-drag"/>
+                        }
                         @if (hasDetail)
                         {
                             <col class="rg-col-expand"/>
@@ -87,6 +207,10 @@
                     </colgroup>
                     <thead>
                     <tr class="rg-head">
+                        @if (RowReorder)
+                        {
+                            <th class="rg-drag" aria-hidden="true"></th>
+                        }
                         @if (hasDetail)
                         {
                             <th class="rg-expand-cell" aria-hidden="true"></th>
@@ -146,6 +270,10 @@
                         @for (var i = 0; i < Math.Min(pageSize, 12); i++)
                         {
                             <tr class="rg-skeleton-row" aria-hidden="true">
+                                @if (RowReorder)
+                                {
+                                    <td class="rg-drag"></td>
+                                }
                                 @if (hasDetail)
                                 {
                                     <td class="rg-expand-cell"></td>
@@ -169,59 +297,8 @@
                     }
                     else
                     {
-                        @foreach (var row in prepared.Rows)
-                        {
-                            var rowKey = RowKey(row);
-                            var detailId = $"{Id}-detail-{rowKey}";
-                            var detailKey = rowKey + "-detail";
-                            <tr data-row-key="@rowKey" @key="rowKey">
-                                @if (hasDetail)
-                                {
-                                    <td class="rg-expand-cell">
-                                        <button type="button" class="rg-expand" data-rg-expand="@detailId"
-                                                data-rg-detail-url="@DetailUrl!.Replace("{key}", rowKey)"
-                                                aria-expanded="false" aria-label="@L["Grid_ExpandRow"]">
-                                            <span class="rg-ico rg-ico-chevron"></span>
-                                        </button>
-                                    </td>
-                                }
-                                @foreach (var col in columns)
-                                {
-                                    var alignCol = col.Align ?? (col.Filter == GridFilterType.Number ? "right" : null);
-                                    var editable = prepared.CanEdit && col.Editable && !string.IsNullOrEmpty(col.Editor);
-                                    <td data-rg-field="@col.Key" data-label="@col.Header"
-                                        class="@AlignClass(alignCol) @(col.Wrap ? "rg-wrap" : null) @(editable ? "rg-editable" : null) @col.CssClass"
-                                        data-rg-edit="@(editable ? col.Editor : null)">
-                                        @RenderCell(col, row)
-                                    </td>
-                                }
-                                @if (hasCards)
-                                {
-                                    <td class="rg-card" colspan="@spanCols">
-                                        @if (CardTemplate is not null)
-                                        {
-                                            @CardTemplate(row)
-                                        }
-                                        else
-                                        {
-                                            @((MarkupString)Card!(row).Html)
-                                        }
-                                    </td>
-                                }
-                            </tr>
-                            @if (hasDetail)
-                            {
-                                <tr class="rg-detail-row" data-detail-row="@rowKey" hidden @key="detailKey">
-                                    <td colspan="@spanCols" class="rg-detail-cell">
-                                        <div id="@detailId" class="rg-detail">
-                                            <div class="rg-detail-loading">
-                                                <span class="rg-ico rg-ico-spinner rg-ico-spin"></span> Loading…
-                                            </div>
-                                        </div>
-                                    </td>
-                                </tr>
-                            }
-                        }
+                        @dataRows
+                        @sentinel
                     }
                     </tbody>
                 </table>
@@ -347,6 +424,17 @@
             }
 
             <div class="rg-foot">
+                @if (VirtualScroll)
+                {
+                    @* No page to pick and no size to choose in virtual mode: blocks share the grid's
+                       PageSize and arrive on scroll, so the pager and the pageSize select give way to a
+                       running count. VirtualScroll.ts restates this label from the rows actually in the
+                       DOM after every append/swap — the wording and the en-US thousands separators here
+                       deliberately match what it writes. *@
+                    <span class="rg-nums" data-rg-loaded>Loaded @loadedCount.ToString("N0", CultureInfo.InvariantCulture) of @prepared.TotalCount.ToString("N0", CultureInfo.InvariantCulture)</span>
+                }
+                else
+                {
                 <div class="rg-foot-cell">
                     <span>Page Size:</span>
                     <select name="pageSize" class="rg-select" hx-post="@_endpoints.Region" hx-trigger="change" hx-vals='{"page":"1"}'>
@@ -374,9 +462,11 @@
                         <span class="rg-ico rg-ico-last"></span>
                     </button>
                 </div>
+                }
             </div>
         </form>
     </div>
+    }
 }
 
 @code {
@@ -400,6 +490,16 @@
     /// the grid then loads its first page via its own load POST, showing skeleton rows until data arrives.</summary>
     [Parameter]
     public bool DeferInitialLoad { get; set; } = true;
+
+    /// <summary>Continuous (infinite) scroll instead of the pager: a sentinel row appends the next block
+    /// as the user nears the end, and the footer shows a "Loaded N of M" count.</summary>
+    [Parameter]
+    public bool VirtualScroll { get; set; }
+
+    /// <summary>Drag-and-drop row reordering: a leading handle cell per row; drops post to the grid's
+    /// <c>/reorder</c> endpoint (Razor Pages: <c>OnPost{Handler}ReorderAsync</c>).</summary>
+    [Parameter]
+    public bool RowReorder { get; set; }
 
     /// <summary>Expandable master-detail rows: a leading expand toggle per row that htmx-fetches <see cref="DetailUrl"/>.</summary>
     [Parameter]
@@ -427,6 +527,7 @@
     private PreparedGrid<TRow>? _prepared;
     private GridEndpoints _endpoints;
     private bool _deferred;
+    private bool _block;
     private Dictionary<string, RaptorColumnSpec<TRow>> _specByKey = new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyDictionary<string, string> _filterValues = new Dictionary<string, string>();
     private IReadOnlyDictionary<string, string> _filterOps = new Dictionary<string, string>();
@@ -449,6 +550,7 @@
             ViewPermission = ViewPermission,
             EditPermission = EditPermission,
             DeferInitialLoad = DeferInitialLoad,
+            VirtualScroll = VirtualScroll,
         };
 
         _deferred = DeferInitialLoad && HttpMethods.IsGet(http.Request.Method);
@@ -458,15 +560,20 @@
         }
         else
         {
-            var path = http.Request.Path.Value ?? string.Empty;
-            _endpoints = new GridEndpoints(
-                Region: $"{path}?handler={Handler}",
-                Block: $"{path}?handler={Handler}Block",
-                Cell: $"{path}?handler={Handler}Cell");
+            _endpoints = GridEndpoints.ForPageHandlers(http.Request.Path.Value ?? string.Empty, Handler);
         }
 
         IEnumerable<KeyValuePair<string, StringValues>> request =
             http.Request.HasFormContentType ? http.Request.Form : http.Request.Query;
+
+        // A sentinel's block post: answer with ONLY the requested page's rows (+ the next sentinel)
+        // instead of the whole region — the markup's outermost branch. Recognised from a form field
+        // rather than a dedicated route (GridEndpoints.Block is deliberately unused for this): the
+        // sentinel posts the region form itself, so filter/sort/colOrder state rides along for free and
+        // the host wires no extra handler.
+        _block = VirtualScroll
+                 && http.Request.HasFormContentType
+                 && http.Request.Form["block"] == "1";
 
         var source = new DelegateGridSource<TRow>(view, ItemsProvider, RowKey);
         // The non-acquiring entry: this lifecycle (RaptorSequentialComponent) already holds the render
