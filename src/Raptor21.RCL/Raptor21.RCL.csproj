@@ -21,7 +21,7 @@
   <PropertyGroup Label="Package">
     <IsPackable>true</IsPackable>
     <PackageId>Raptor21.RCL</PackageId>
-    <Version>0.3.0-preview.9</Version>
+    <Version>0.3.0-preview.10</Version>
     <Description>Server-rendered Razor component library for ASP.NET Core static SSR, driven by htmx: grid, filter, forms, modals, charts and page composition.</Description>
     <PackageTags>razor;razor-components;blazor-ssr;grid;filter;htmx;rcl</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -62,10 +62,23 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="wwwroot\dist\**\*" Exclude="wwwroot\dist\**\*.map" />
     <Content Remove="wwwroot\**" />
     <None Remove="wwwroot\**" />
   </ItemGroup>
+
+  <!-- The dist glob is expanded HERE, in a target, and not in a static item group: static items are
+       evaluated before any target runs, so when RaptorBuildClientBundle rewrites the content-hashed
+       bundle in the same invocation, a static glob would hand CSC the PREVIOUS build's file names and
+       fail with CS1566 on the first build after any hash change. AssignTargetPaths is the first target
+       that consumes EmbeddedResource, so adding the items just before it keeps every later consumer
+       (manifest naming, CoreCompile) on the fresh names. -->
+  <Target Name="RaptorEmbedClientBundle"
+          BeforeTargets="AssignTargetPaths"
+          DependsOnTargets="RaptorBuildClientBundle">
+    <ItemGroup>
+      <EmbeddedResource Include="wwwroot\dist\**\*" Exclude="wwwroot\dist\**\*.map" />
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <None Include="Client\**\*" Exclude="Client\node_modules\**" />

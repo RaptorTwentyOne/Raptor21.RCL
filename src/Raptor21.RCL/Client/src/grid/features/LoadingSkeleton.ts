@@ -3,11 +3,17 @@ import { GridFeature } from '../GridFeature'
 /** The fields this feature reads off an htmx request event. */
 interface HtmxRequestDetail {
     readonly target?: EventTarget | null
+    readonly elt?: EventTarget | null
 }
 
 function targetOf(event: Event): Element | null {
     const target = (event as CustomEvent<HtmxRequestDetail | undefined>).detail?.target
     return target instanceof Element ? target : null
+}
+
+function requesterOf(event: Event): Element | null {
+    const elt = (event as CustomEvent<HtmxRequestDetail | undefined>).detail?.elt
+    return elt instanceof Element ? elt : null
 }
 
 /**
@@ -73,6 +79,13 @@ export class LoadingSkeleton extends GridFeature {
         // Only a request that will replace this whole region blanks the rows. A cell save targets a
         // <td>, a master-detail load targets the detail panel — both keep the rows meaningful.
         if (targetOf(event) !== this.el) return
+
+        // An infinite-scroll block append never blanks the rows either: it asks for MORE rows below
+        // the ones on screen, and hiding those would turn "load the next block" into "the grid went
+        // blank". Today the sentinel swaps itself (its request targets the <tr>, so the check above
+        // already returns) — this guard states the exemption outright, so a future retarget of the
+        // sentinel's response cannot silently regress mid-scroll into a skeleton flash.
+        if (requesterOf(event)?.closest('[data-rg-sentinel]')) return
 
         const tbody = this.tbody()
         const scroller = this.grid.scroller

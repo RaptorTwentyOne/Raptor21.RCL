@@ -16,6 +16,12 @@ function htmxApi(): HtmxTrigger | null {
  * fire its `sgload` htmx trigger, which requests the next block and appends it in place of the
  * sentinel — so paging is server-driven and this feature only decides *when* to ask.
  *
+ * A block request rides the REGION endpoint: the sentinel posts the state form with `block=1` in its
+ * `hx-vals`, and the server branches on that form field to answer with only the next rows and a fresh
+ * sentinel. GridEndpoints.Block is deliberately not used — because the sentinel sits inside the form,
+ * the request carries the current filters, sort and column order for free, and the host needs no
+ * extra handler.
+ *
  * The observation is hand-rolled rather than htmx's own `intersect` trigger because the sentinel must
  * be measured against the grid's own bounded scroll viewport rather than the page: `intersect` cannot
  * take an inner root, and a page carrying several grids needs one root per grid.

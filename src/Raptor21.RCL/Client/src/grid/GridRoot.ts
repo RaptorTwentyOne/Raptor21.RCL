@@ -9,6 +9,7 @@ import { LoadErrors } from './features/LoadErrors'
 import { LoadingSkeleton } from './features/LoadingSkeleton'
 import { MasterDetail } from './features/MasterDetail'
 import { MobileFilterDrawer } from './features/MobileFilterDrawer'
+import { RowReorder } from './features/RowReorder'
 import { RowSelection } from './features/RowSelection'
 import { VirtualScroll } from './features/VirtualScroll'
 
@@ -36,6 +37,7 @@ export class GridRoot extends GridComponent {
             .use(ColumnSizing)
             .use(ColumnPinning)
             .use(ColumnReorder)
+            .use(RowReorder)
             .use(GridLayout)
     }
 }
