@@ -1,0 +1,305 @@
+@use '../tap' as tap;
+
+/* ================================================================================================
+   RaptorEditor — the HTML mail-template editor (Forms/RaptorEditor.razor + Client/src/editor).
+
+   EVERYTHING for this component is global, including the parts a .razor.scss could have carried: the
+   link/image popover is built by JS, the Variables panel is portalled out of the root by the dropdown, and
+   the host swaps the whole card with htmx. One stylesheet, one scope rule, nothing that can silently miss.
+
+   The chrome (toolbar, status, popover) follows the --rg-* tokens and so the host theme; the FRAME CONTENT
+   does not — it is a mail, it stays light whatever the back office looks like, and its editor-only rules
+   (token chips, placeholder) are injected INTO the frame by EditorComponent.injectEditorStyle.
+   ================================================================================================ */
+
+.rg-editor {
+    position: relative;                      /* the popover is absolutely positioned against the root */
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    border: 1px solid var(--rg-input-border);
+    border-radius: .375rem;
+    background: var(--rg-input-bg);
+    color: var(--rg-fg);
+
+    --rg-editor-height: 520px;               /* overridden inline from the Height parameter */
+
+    &:focus-within { border-color: var(--rg-accent); }
+}
+
+/* ---------- toolbar ---------- */
+
+.rg-editor__toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .25rem;
+    padding: .35rem .45rem;
+    border-bottom: 1px solid var(--rg-border);
+    background: var(--rg-header-bg);
+    border-radius: .375rem .375rem 0 0;
+}
+
+.rg-editor__group {
+    display: inline-flex;
+    align-items: center;
+    gap: .1rem;
+}
+
+.rg-editor__sep {
+    width: 1px;
+    height: 1.25rem;
+    margin: 0 .25rem;
+    background: var(--rg-border);
+    flex: 0 0 auto;
+}
+
+.rg-editor__spacer { flex: 1 1 auto; }
+
+.rg-editor__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .35rem;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: .3rem;
+    background: transparent;
+    color: var(--rg-fg);
+    font: inherit;
+    font-size: .82rem;
+    line-height: 1;
+    cursor: pointer;
+
+    &:hover:not(:disabled) { background: var(--rg-hover); }
+    &:focus-visible { outline: 2px solid var(--rg-accent); outline-offset: -2px; }
+    &:disabled { opacity: .45; cursor: not-allowed; }
+    &[aria-pressed='true'] { background: var(--rg-sel); border-color: var(--rg-border); }
+    /* Dropdown trigger carries aria-expanded instead of aria-pressed. */
+    &[aria-expanded='true'] { background: var(--rg-hover); }
+}
+
+/* A text-bearing toolbar button (the Variables trigger): same height, natural width. */
+.rg-editor__btn--text {
+    width: auto;
+    padding: 0 .55rem 0 .45rem;
+    white-space: nowrap;
+}
+
+/* The Variables dropdown root — RaptorDropdown's wrapper, laid out like any other toolbar control. */
+.rg-editor__vars { display: inline-flex; align-items: center; }
+
+.rg-editor__select {
+    height: 2rem;
+    padding: 0 .4rem;
+    border: 1px solid var(--rg-input-border);
+    border-radius: .3rem;
+    background: var(--rg-input-bg);
+    color: var(--rg-fg);
+    font: inherit;
+    font-size: .8rem;
+    cursor: pointer;
+
+    &:focus-visible { outline: 2px solid var(--rg-accent); outline-offset: -1px; }
+    &:disabled { opacity: .45; cursor: not-allowed; }
+}
+
+/* Design | HTML — a two-segment toggle, pressed state drawn by aria-pressed. */
+.rg-editor__segment {
+    display: inline-flex;
+    border: 1px solid var(--rg-input-border);
+    border-radius: .3rem;
+    overflow: hidden;
+}
+
+.rg-editor__seg {
+    padding: 0 .65rem;
+    height: calc(2rem - 2px);
+    border: 0;
+    background: transparent;
+    color: var(--rg-muted);
+    font: inherit;
+    font-size: .78rem;
+    font-weight: 550;
+    cursor: pointer;
+
+    & + & { border-inline-start: 1px solid var(--rg-input-border); }
+    &:hover { color: var(--rg-fg); background: var(--rg-hover); }
+    &:focus-visible { outline: 2px solid var(--rg-accent); outline-offset: -2px; }
+    &[aria-pressed='true'] { background: var(--rg-accent); color: #fff; }
+}
+
+/* ---------- variables menu items (inside the portalled dropdown panel) ---------- */
+
+.rg-editor__var {
+    align-items: flex-start;
+    gap: .6rem;
+}
+
+.rg-editor__var-token {
+    flex: 0 0 auto;
+    padding: .1rem .4rem;
+    border-radius: .3rem;
+    background: var(--rg-sel);
+    color: var(--rg-fg);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .76rem;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.rg-editor__var-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: .05rem;
+}
+
+.rg-editor__var-label { font-size: .82rem; }
+
+.rg-editor__var-desc {
+    font-size: .74rem;
+    color: var(--rg-muted);
+    white-space: normal;
+}
+
+/* ---------- surface ---------- */
+
+.rg-editor__surface {
+    position: relative;
+    min-width: 0;
+    /* The frame is the one element in the library that MUST stay light under a dark host theme — it is a mail. */
+    background: #fff;
+}
+
+.rg-editor__frame {
+    display: block;
+    width: 100%;
+    height: var(--rg-editor-height);
+    border: 0;
+    background: #fff;
+    color-scheme: light;
+}
+
+.rg-editor__source {
+    display: block;
+    width: 100%;
+    height: var(--rg-editor-height);
+    margin: 0;
+    padding: .6rem .75rem;
+    border: 0;
+    border-radius: 0;
+    resize: vertical;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .8rem;
+    line-height: 1.5;
+    tab-size: 2;
+    /* Soft-wrap: a mail template is a handful of very long lines, and a horizontal scrollbar on a 2 KB
+       `<style>` line hides everything after column 120. border-box so 100% + padding stays inside the root. */
+    box-sizing: border-box;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    overflow: auto;
+
+    /* The root's focus-within already paints the focus ring; a second one inside doubles the border. */
+    &:focus { outline: none; }
+}
+
+.rg-editor[data-rg-editor-disabled] .rg-editor__surface { opacity: .85; }
+
+/* ---------- status line ---------- */
+
+.rg-editor__status {
+    display: flex;
+    gap: .4rem;
+    padding: .25rem .6rem;
+    border-top: 1px solid var(--rg-border-soft);
+    background: var(--rg-header-bg);
+    border-radius: 0 0 .375rem .375rem;
+    font-size: .72rem;
+    color: var(--rg-muted);
+}
+
+/* ---------- link / image popover (JS-built, see editor/Popover.ts) ---------- */
+
+.rg-editor__pop {
+    position: absolute;
+    z-index: var(--rg-z-popover, 500);
+    min-width: 18rem;
+    max-width: calc(100% - 1rem);
+    padding: .7rem .8rem .65rem;
+    border: 1px solid var(--rg-border);
+    border-radius: .45rem;
+    background: var(--rg-surface);
+    color: var(--rg-fg);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, .22);
+}
+
+.rg-editor__pop-form {
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+}
+
+.rg-editor__pop-title {
+    font-size: .8rem;
+    font-weight: 600;
+}
+
+.rg-editor__pop-field {
+    display: flex;
+    flex-direction: column;
+    gap: .2rem;
+}
+
+.rg-editor__pop-label {
+    font-size: .72rem;
+    color: var(--rg-muted);
+}
+
+.rg-editor__pop-input {
+    font-size: .82rem;
+
+    &[aria-invalid='true'] { border-color: var(--rg-danger); }
+}
+
+.rg-editor__pop-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: .4rem;
+    padding-top: .2rem;
+}
+
+/* ---------- icons — currentColor masks, no icon font; same pattern as the grid's .rg-ico ---------- */
+
+.rg-editor__ico {
+    display: inline-block;
+    width: 1.1rem;
+    height: 1.1rem;
+    flex: 0 0 auto;
+    background-color: currentColor;
+    -webkit-mask: var(--rg-ico) no-repeat center / contain;
+    mask: var(--rg-ico) no-repeat center / contain;
+}
+
+.rg-editor__ico--bold      { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 4h6.2c2.6 0 4.4 1.5 4.4 3.9 0 1.5-.8 2.6-2 3.1 1.7.4 2.8 1.8 2.8 3.6 0 2.7-2 4.4-5 4.4H7zm3 2.6v4h2.7c1.3 0 2-.8 2-2s-.7-2-2-2zm0 6.5v4.3h3.1c1.4 0 2.2-.8 2.2-2.2 0-1.3-.9-2.1-2.3-2.1z'/%3E%3C/svg%3E"); }
+.rg-editor__ico--italic    { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M10 4h8v2.4h-2.9l-3.4 11.2H14.6V20H6.6v-2.4h2.9l3.4-11.2H10z'/%3E%3C/svg%3E"); }
+.rg-editor__ico--underline { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 3h2.4v8.2c0 1.9 1 3 2.6 3s2.6-1.1 2.6-3V3H17v8.3c0 3.3-2 5.3-5 5.3s-5-2-5-5.3zM5 19h14v2H5z'/%3E%3C/svg%3E"); }
+.rg-editor__ico--ul        { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='5' cy='6.5' r='1.6'/%3E%3Ccircle cx='5' cy='12' r='1.6'/%3E%3Ccircle cx='5' cy='17.5' r='1.6'/%3E%3Cpath d='M9 5.5h11v2H9zM9 11h11v2H9zM9 16.5h11v2H9z'/%3E%3C/svg%3E"); }
+.rg-editor__ico--ol        { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4.4 4h1.4v4H4.6V5.2l-.9.3V4.5zM3.6 10.6c0-1 .8-1.6 1.8-1.6s1.8.6 1.8 1.5c0 .6-.3 1-.9 1.6l-1 .9h2v1H3.6v-.9l1.8-1.7c.4-.4.6-.6.6-.9 0-.3-.3-.5-.6-.5-.4 0-.6.2-.7.6zm.1 5.5h3.4v.9l-1.1 1.2c.7.1 1.2.6 1.2 1.3 0 .9-.8 1.5-1.9 1.5-.8 0-1.4-.3-1.8-.7l.6-.8c.3.3.7.5 1.1.5.5 0 .8-.2.8-.6s-.3-.6-.9-.6h-.5v-.8l1-1.1H3.7zM9 5.5h11v2H9zM9 11h11v2H9zM9 16.5h11v2H9z'/%3E%3C/svg%3E"); }
+.rg-editor__ico--link      { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M10.6 13.4a1 1 0 0 1 0-1.4l2.8-2.8a1 1 0 1 1 1.4 1.4L12 13.4a1 1 0 0 1-1.4 0zM8.5 17.6l-1.4 1.4a3 3 0 0 1-4.2-4.2l4.2-4.3a3 3 0 0 1 4.3 0 1 1 0 0 0 1.4-1.4 5 5 0 0 0-7.1 0L1.5 13.4a5 5 0 0 0 7 7.1l1.5-1.5a1 1 0 1 0-1.5-1.4zM22.5 3.5a5 5 0 0 0-7-0L14 5a1 1 0 1 0 1.4 1.4l1.4-1.4a3 3 0 0 1 4.3 4.2l-4.3 4.3a3 3 0 0 1-4.2 0 1 1 0 0 0-1.4 1.4 5 5 0 0 0 7 0l4.3-4.2a5 5 0 0 0 0-7.1z'/%3E%3C/svg%3E"); }
+.rg-editor__ico--unlink    { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M8.5 17.6l-1.4 1.4a3 3 0 0 1-4.2-4.2l4.2-4.3a3 3 0 0 1 4.3 0 1 1 0 0 0 1.4-1.4 5 5 0 0 0-7.1 0L1.5 13.4a5 5 0 0 0 7 7.1l1.5-1.5a1 1 0 1 0-1.5-1.4zM22.5 3.5a5 5 0 0 0-7 0L14 5a1 1 0 1 0 1.4 1.4l1.4-1.4a3 3 0 0 1 4.3 4.2l-4.3 4.3a3 3 0 0 1-4.2 0 1 1 0 0 0-1.4 1.4 5 5 0 0 0 7 0l4.3-4.2a5 5 0 0 0 0-7.1zM3 3l18 18-1.4 1.4L1.6 4.4z'/%3E%3C/svg%3E"); }
+.rg-editor__ico--image     { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 4h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm1 2v10.6l4.5-4.5 3 3 3.5-3.5 3 3V6zm3.5 2a1.8 1.8 0 1 1 0 3.6 1.8 1.8 0 0 1 0-3.6z'/%3E%3C/svg%3E"); }
+.rg-editor__ico--table     { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 4h18v16H3zm2 2v3.5h6.2V6zm8.2 0v3.5H19V6zM5 11.5V15h6.2v-3.5zm8.2 0V15H19v-3.5zM5 17v1h6.2v-1zm8.2 0v1H19v-1z'/%3E%3C/svg%3E"); }
+.rg-editor__ico--var       { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M8 3.5h2v2H9c-.6 0-1 .4-1 1v3c0 1-.5 1.9-1.3 2.5.8.6 1.3 1.5 1.3 2.5v3c0 .6.4 1 1 1h1v2H8a2.5 2.5 0 0 1-2.5-2.5v-3c0-.8-.7-1.5-1.5-1.5H3.5v-2H4c.8 0 1.5-.7 1.5-1.5V6A2.5 2.5 0 0 1 8 3.5zm8 0A2.5 2.5 0 0 1 18.5 6v3.5c0 .8.7 1.5 1.5 1.5h.5v2H20c-.8 0-1.5.7-1.5 1.5v3c0 1.4-1.1 2.5-2.5 2.5h-2v-2h1c.6 0 1-.4 1-1v-3c0-1 .5-1.9 1.3-2.5-.8-.6-1.3-1.5-1.3-2.5v-3c0-.6-.4-1-1-1h-1v-2z'/%3E%3C/svg%3E"); }
+.rg-editor__ico--chevron   { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6.7 9.3a1 1 0 0 1 1.4 0L12 13.2l3.9-3.9a1 1 0 1 1 1.4 1.4l-4.6 4.6a1 1 0 0 1-1.4 0L6.7 10.7a1 1 0 0 1 0-1.4z'/%3E%3C/svg%3E"); width: .85rem; height: .85rem; }
+
+/* ---------- touch targets — see ../_tap.scss ---------- */
+@include tap.media {
+    .rg-editor__btn,
+    .rg-editor__seg,
+    .rg-editor__select { @include tap.height; }
+    .rg-editor__btn { min-width: var(--rg-tap-min); }
+}

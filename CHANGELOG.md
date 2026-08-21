@@ -11,6 +11,40 @@ default only. Tag and heading below must agree.
 
 ## [Unreleased]
 
+### Added
+
+- **`RaptorEditor`** — an HTML mail-template editor (`Forms/RaptorEditor.razor`, client chunk
+  `editor`). It edits a **whole document** — `<!DOCTYPE html><html><head><style>…</style></head><body>…` —
+  not a fragment: the design view is a sandboxed `<iframe>` the component writes the document into
+  (`document.open/write/close`, then `designMode`), so the template's `<head>` and `<style>` survive
+  every round-trip and its CSS never leaks into the host page. A `<textarea>` next to it **is the form
+  field**: the client re-serializes the frame into it on input (300 ms debounce), after every command, on
+  focus-out, on the enclosing form's `submit`, and on `htmx:configRequest` — where it also patches the
+  already-collected `parameters` bag — so a host form posts the document with no extra endpoint and no
+  script of its own. Fragments stay fragments and the original doctype line is preserved verbatim.
+  `{identifier}` placeholders in body text are shown as non-editable chips (block tokens declared through
+  `RaptorEditorVariable.IsBlock` as dashed block placeholders) and unwrapped on serialize. Toolbar:
+  paragraph style, bold/italic/underline, lists, link/unlink/image (inline popover, never
+  `window.prompt`), a 2×2 table, a Variables menu (`RaptorDropdown`), and a Design | HTML toggle; the
+  host adds its own controls through `Tools`. **Zero-host-JS insert hook**: any element carrying
+  `data-rg-editor-insert="{token}"` and `data-rg-editor-for="<textarea id | field name>"` inserts that
+  token at the caret of the matching editor — in either view — through a document-level listener the
+  component owns and removes on unmount. The frame is `sandbox="allow-same-origin"` without
+  `allow-scripts` (measured in Chromium: editing, `execCommand` and `queryCommandState` all work from the
+  parent while a written `<script>` does not run); `<script>` elements are stripped before the write as
+  well, and should an engine ever refuse to edit a sandboxed document the component rebuilds the frame
+  without the sandbox, strips inline handlers and `javascript:` URLs in compensation, and logs that it did.
+  Styles live entirely in the global stylesheet (`rg-editor*`); the editor chrome follows the `--rg-*`
+  tokens, the frame content stays light because it is a mail. Known limitation, and it is the HTML
+  parser's rather than the editor's: text placed directly inside `<table>`/`<tbody>`/`<tr>` (for example
+  `<table>{rows}</table>`) is foster-parented out of the table by every DOM parser — put such a block
+  token inside a `<td>`, or keep that template in the HTML view.
+
+### Fixed
+
+- `RaptorDropdown` now really splats `AdditionalAttributes` onto its trigger button, as its doc comment
+  always said it did (`title`, `aria-label`, `disabled`, … were silently dropped).
+
 ## [0.3.0-preview.1] - 2026-08-06
 
 The MVC era is over. This release removes every server-side-MVC-era surface the original migration

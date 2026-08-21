@@ -54,7 +54,9 @@ Sunucu tarafı Blazor bileşenleri. Bunlar **taşıyıcıdır** (child content a
 taşıyıcı değildir — ayrım bu.
 
 **Form:** `RaptorInput` · `RaptorTextarea` · `RaptorSelect` · `RaptorCheckbox` · `RaptorSwitch` · `RaptorField`
-· `RaptorButton` · `RaptorActionsMenu`
+· `RaptorButton` · `RaptorActionsMenu` · `RaptorEditor` (tam HTML belgeyi — `<head><style>` dahil — sandbox'lı
+iframe'de görsel düzenleyen mail-şablon editörü; textarea form alanının kendisidir, `{token}` çipleri ve host'ta
+sıfır JS ile çalışan `data-rg-editor-insert`/`data-rg-editor-for` ekleme kancası)
 
 **Yapı:** `RaptorModal` · `RaptorTabs`/`RaptorTab` · `RaptorDropdown` · `RaptorContainer` (iskelet)
 

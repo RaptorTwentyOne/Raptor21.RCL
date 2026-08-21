@@ -1,0 +1,276 @@
+@*
+    An HTML mail-template editor: a full document (<!DOCTYPE html><html><head><style>…</style></head><body>…)
+    edited visually inside a sandboxed iframe, with a raw-source view next to it.
+
+    The <textarea> IS the form field. The client keeps its value current after every edit, so a host form posts
+    the document like any other input — there is no extra endpoint, no hidden mirror field and no JS for the
+    host to write. Everything interactive lives in the client bundle behind data-rg-component="editor".
+
+    Static SSR only: no @onclick, no interop. Every toolbar control is type="button" and carries a
+    data-rg-editor-cmd the client dispatches on; the host's own extras arrive through Tools.
+*@
+<div class="@RootClass"
+     data-rg-component="editor"
+     data-rg-editor-mode="@ModeAttribute"
+     data-rg-editor-disabled="@(Disabled ? "" : null)"
+     data-rg-editor-block-tokens="@BlockTokens"
+     data-rg-editor-placeholder="@Placeholder"
+     style="@RootStyle"
+     @attributes="AdditionalAttributes">
+
+    <div class="rg-editor__toolbar" role="toolbar" aria-label="Editor toolbar">
+
+        <div class="rg-editor__group">
+            <select class="rg-editor__select" data-rg-editor-cmd="heading" aria-label="Paragraph style" title="Paragraph style" disabled="@Disabled">
+                @foreach (var level in EffectiveHeadingLevels)
+                {
+                    <option value="@level">@HeadingLabel(level)</option>
+                }
+            </select>
+        </div>
+
+        <span class="rg-editor__sep" aria-hidden="true"></span>
+
+        <div class="rg-editor__group">
+            @ToolButton("bold", "Bold (Ctrl+B)", "bold")
+            @ToolButton("italic", "Italic (Ctrl+I)", "italic")
+            @ToolButton("underline", "Underline (Ctrl+U)", "underline")
+        </div>
+
+        <span class="rg-editor__sep" aria-hidden="true"></span>
+
+        <div class="rg-editor__group">
+            @ToolButton("ul", "Bulleted list", "ul")
+            @ToolButton("ol", "Numbered list", "ol")
+        </div>
+
+        <span class="rg-editor__sep" aria-hidden="true"></span>
+
+        <div class="rg-editor__group">
+            @ToolButton("link", "Insert link", "link")
+            @ToolButton("unlink", "Remove link", "unlink")
+            @ToolButton("image", "Insert image", "image")
+            @ToolButton("table", "Insert table", "table")
+        </div>
+
+        @if (Variables is { Count: > 0 })
+        {
+            <span class="rg-editor__sep" aria-hidden="true"></span>
+            <div class="rg-editor__group">
+                @*
+                    The variables menu is the library's own dropdown. Its panel is portalled out of this subtree
+                    when it opens, so the items cannot be caught by a listener on the editor root — instead every
+                    item is an INSERT HOOK (data-rg-editor-insert + data-rg-editor-for), the same contract a host
+                    uses for its own "insert" buttons anywhere on the page. One mechanism, one code path.
+                *@
+                <RaptorDropdown Menu="true" Search="@(Variables.Count > 8)" Placement="bottom-start"
+                                TriggerClass="rg-editor__btn rg-editor__btn--text" Class="rg-editor__vars"
+                                title="Insert a variable" aria-label="Insert a variable" disabled="@(Disabled ? "disabled" : null)">
+                    <Trigger>
+                        <span class="rg-editor__ico rg-editor__ico--var" aria-hidden="true"></span>
+                        <span>Variables</span>
+                        <span class="rg-editor__ico rg-editor__ico--chevron" aria-hidden="true"></span>
+                    </Trigger>
+                    <ChildContent>
+                        @foreach (var v in Variables)
+                        {
+                            <button type="button" class="rg-dd-item rg-editor__var" role="menuitem"
+                                    data-rg-dropdown-item
+                                    data-rg-editor-insert="@v.Token"
+                                    data-rg-editor-for="@EffectiveId"
+                                    title="@(v.Description ?? v.Label)">
+                                <code class="rg-editor__var-token">@v.Token</code>
+                                <span class="rg-editor__var-text">
+                                    <span class="rg-editor__var-label">@v.Label</span>
+                                    @if (!string.IsNullOrWhiteSpace(v.Description))
+                                    {
+                                        <span class="rg-editor__var-desc">@v.Description</span>
+                                    }
+                                </span>
+                            </button>
+                        }
+                    </ChildContent>
+                </RaptorDropdown>
+            </div>
+        }
+
+        <span class="rg-editor__spacer" aria-hidden="true"></span>
+
+        @Tools
+
+        <div class="rg-editor__segment" role="group" aria-label="Editing mode">
+            <button type="button" class="rg-editor__seg" data-rg-editor-mode-set="design"
+                    aria-pressed="@(Mode == RaptorEditorMode.Design ? "true" : "false")">Design</button>
+            <button type="button" class="rg-editor__seg" data-rg-editor-mode-set="source"
+                    aria-pressed="@(Mode == RaptorEditorMode.Source ? "true" : "false")">HTML</button>
+        </div>
+    </div>
+
+    <div class="rg-editor__surface">
+        @*
+            sandbox="allow-same-origin" WITHOUT allow-scripts: the parent keeps full DOM access (document.open/
+            write, designMode, execCommand all work — measured in Chromium, see EditorComponent.ts), while any
+            <script>, inline handler or javascript: URL inside the template is inert. The template is author
+            content, not attacker content, but a mail template pasted from somewhere is exactly the kind of input
+            that should not run in the back office's origin. Scripts are stripped before the write as well.
+        *@
+        <iframe class="rg-editor__frame" title="Design view" sandbox="allow-same-origin" referrerpolicy="no-referrer"
+                hidden="@(Mode == RaptorEditorMode.Source)"></iframe>
+        @* The parser drops one newline right after <textarea>; a sacrificial one keeps a Value that starts with a newline intact on an untouched round-trip. *@
+        <textarea @attributes="TextareaAttributes">@("\n")@Value</textarea>
+    </div>
+
+    <div class="rg-editor__status">
+        <span data-rg-editor-status-mode>@(Mode == RaptorEditorMode.Design ? "Design" : "HTML")</span>
+        <span aria-hidden="true">·</span>
+        <span><span data-rg-editor-status-chars>@((Value ?? string.Empty).Length.ToString("N0", System.Globalization.CultureInfo.InvariantCulture))</span> characters</span>
+    </div>
+</div>
+
+@code {
+
+    /// <summary>Form field name. The textarea inside posts the current HTML document under this name.</summary>
+    [Parameter, EditorRequired]
+    public string Name { get; set; } = default!;
+
+    /// <summary>
+    /// Id of the textarea (the form field). When omitted a stable one is derived from <see cref="Name"/> so
+    /// insert hooks (<c>data-rg-editor-for</c>) and labels have something to point at across re-renders.
+    /// </summary>
+    [Parameter]
+    public string? Id { get; set; }
+
+    /// <summary>The HTML document — a whole <c>&lt;!DOCTYPE html&gt;…</c> page or a fragment, both round-trip.</summary>
+    [Parameter]
+    public string? Value { get; set; }
+
+    /// <summary>CSS height of the editing surface (design frame and source textarea alike).</summary>
+    [Parameter]
+    public string Height { get; set; } = "520px";
+
+    /// <summary>Read-only: no design editing, toolbar disabled, textarea readonly.</summary>
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    /// <summary>Extra classes on the editor root.</summary>
+    [Parameter]
+    public string? Class { get; set; }
+
+    /// <summary>Shown when the document has no body content (design view) or the textarea is empty (source view).</summary>
+    [Parameter]
+    public string? Placeholder { get; set; }
+
+    /// <summary>The view the editor opens in. Client state only — it is never posted back.</summary>
+    [Parameter]
+    public RaptorEditorMode Mode { get; set; } = RaptorEditorMode.Design;
+
+    /// <summary>Placeholders offered in the "Variables" menu. Null or empty hides the menu.</summary>
+    [Parameter]
+    public IReadOnlyList<RaptorEditorVariable>? Variables { get; set; }
+
+    /// <summary>Extra toolbar content, rendered at the END of the toolbar (a host's own Preview toggle, say).</summary>
+    [Parameter]
+    public RenderFragment? Tools { get; set; }
+
+    /// <summary>
+    /// Block formats offered by the paragraph-style select. Tag names — <c>P</c>, <c>H1</c>…<c>H6</c>,
+    /// <c>BLOCKQUOTE</c>, <c>PRE</c>. Default <c>P, H1, H2, H3</c>.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<string>? HeadingLevels { get; set; }
+
+    /// <summary>Everything else (data-*, aria-*, hx-* …) lands on the editor root.</summary>
+    [Parameter(CaptureUnmatchedValues = true)]
+    public IReadOnlyDictionary<string, object?>? AdditionalAttributes { get; set; }
+
+    private static readonly string[] DefaultHeadingLevels = ["P", "H1", "H2", "H3"];
+
+    private IReadOnlyList<string> EffectiveHeadingLevels =>
+        HeadingLevels is { Count: > 0 } ? HeadingLevels : DefaultHeadingLevels;
+
+    private string EffectiveId => string.IsNullOrWhiteSpace(Id) ? $"rg-editor-{Slug(Name)}" : Id;
+
+    private string RootClass => string.IsNullOrWhiteSpace(Class) ? "rg-editor" : $"rg-editor {Class}";
+
+    private string ModeAttribute => Mode == RaptorEditorMode.Source ? "source" : "design";
+
+    private string RootStyle => $"--rg-editor-height:{Height}";
+
+    /// <summary>
+    /// Space-separated list of the tokens that are HTML blocks, read by the client so it can paint those chips
+    /// as block placeholders. An attribute rather than a per-item flag because the chips are created by the
+    /// client from the DOCUMENT text, long after the menu items are out of reach.
+    /// </summary>
+    private string? BlockTokens
+    {
+        get
+        {
+            if (Variables is null) return null;
+            var blocks = Variables.Where(v => v.IsBlock).Select(v => v.Token).ToArray();
+            return blocks.Length == 0 ? null : string.Join(' ', blocks);
+        }
+    }
+
+    private Dictionary<string, object?> TextareaAttributes
+    {
+        get
+        {
+            var a = new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["class"] = "rg-textarea rg-editor__source",
+                ["name"] = Name,
+                ["id"] = EffectiveId,
+                ["spellcheck"] = "false",
+                ["autocomplete"] = "off",
+            };
+            if (!string.IsNullOrEmpty(Placeholder)) a["placeholder"] = Placeholder;
+            // `hidden`, never `display:none` by class alone and never `disabled`: a hidden textarea is still a
+            // submittable form control, a disabled one is dropped from the post.
+            if (Mode == RaptorEditorMode.Design) a["hidden"] = "hidden";
+            if (Disabled) a["readonly"] = "readonly";
+            return a;
+        }
+    }
+
+    private static string HeadingLabel(string level) => level.ToUpperInvariant() switch
+    {
+        "P" => "Paragraph",
+        "H1" => "Heading 1",
+        "H2" => "Heading 2",
+        "H3" => "Heading 3",
+        "H4" => "Heading 4",
+        "H5" => "Heading 5",
+        "H6" => "Heading 6",
+        "BLOCKQUOTE" => "Quote",
+        "PRE" => "Preformatted",
+        var other => other,
+    };
+
+    /// <summary>Turns a form field name (<c>item.body[0]</c>) into something an id attribute may carry.</summary>
+    private static string Slug(string name)
+    {
+        Span<char> buffer = stackalloc char[name.Length];
+        for (var i = 0; i < name.Length; i++)
+        {
+            var c = name[i];
+            buffer[i] = char.IsAsciiLetterOrDigit(c) || c is '-' or '_' ? c : '-';
+        }
+        return new string(buffer);
+    }
+
+    private RenderFragment ToolButton(string cmd, string label, string icon) => builder =>
+    {
+        builder.OpenElement(0, "button");
+        builder.AddAttribute(1, "type", "button");
+        builder.AddAttribute(2, "class", "rg-editor__btn");
+        builder.AddAttribute(3, "data-rg-editor-cmd", cmd);
+        builder.AddAttribute(4, "aria-label", label);
+        builder.AddAttribute(5, "title", label);
+        if (Disabled) builder.AddAttribute(6, "disabled", "disabled");
+        builder.OpenElement(7, "span");
+        builder.AddAttribute(8, "class", $"rg-editor__ico rg-editor__ico--{icon}");
+        builder.AddAttribute(9, "aria-hidden", "true");
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+}
