@@ -39,6 +39,7 @@ define('tabs', () => import('./tabs/TabsComponent').then(m => m.TabsComponent))
 define('gallery', () => import('./gallery/GalleryComponent').then(m => m.GalleryComponent))
 define('chart', () => import('./chart/ChartComponent').then(m => m.ChartComponent))
 define('map', () => import('./map/MapComponent').then(m => m.MapComponent))
+define('editor', () => import('./editor/EditorComponent').then(m => m.EditorComponent))
 
 installApi()
 installChartApi()

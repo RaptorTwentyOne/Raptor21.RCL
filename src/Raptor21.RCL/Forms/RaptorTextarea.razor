@@ -1,12 +1,13 @@
 @if (!string.IsNullOrEmpty(Label))
 {
     <RaptorField Label="@Label" For="@Id" Required="@Required" Hint="@Hint">
-        <textarea @attributes="Attributes">@Value</textarea>
+        <textarea @attributes="Attributes">@("\n")@Value</textarea>
     </RaptorField>
 }
 else
 {
-    <textarea @attributes="Attributes">@Value</textarea>
+    @* The parser drops one newline right after <textarea>: a sacrificial one keeps a leading newline in Value. *@
+    <textarea @attributes="Attributes">@("\n")@Value</textarea>
 }
 
 @code {
