@@ -4,9 +4,11 @@ import {
     EMPTY_ATTR,
     bodyIsEmpty,
     detectShape,
+    doctypeShell,
+    parseDocument,
+    removeExecutableScripts,
     serialize,
     stripHandlersAndJavascriptUrls,
-    stripScripts,
     wrapTokens,
     type SourceShape,
 } from './document'
@@ -223,9 +225,17 @@ export class EditorComponent extends RaptorComponent {
     }
 
     /**
-     * `open/write/close` rather than `srcdoc`: the document is rewritten on every mode switch, `srcdoc` would
-     * re-navigate (asynchronously, with a load event to wait for) and — decisive — a `srcdoc` frame under this
-     * sandbox would re-evaluate its origin per navigation, where the initial about:blank simply inherits ours.
+     * The source is parsed in an inert `DOMParser` document, scrubbed THERE, and then imported into the frame
+     * node by node. The frame never parses author markup: the only thing ever written into it is the doctype
+     * shell, built from the parsed doctype's fields. So nothing can execute during parsing (there is nothing to
+     * execute in a DOMParser document), nothing survives into the frame that the scrub did not see, and a
+     * mutation-XSS payload has no second parse to mutate on. Scripts imported this way are also "already
+     * started" by spec, so even a data script that is kept could never run.
+     *
+     * `open/write/close` for the shell rather than `srcdoc`: the document is rewritten on every mode switch,
+     * `srcdoc` would re-navigate (asynchronously, with a load event to wait for) and — decisive — a `srcdoc`
+     * frame under this sandbox would re-evaluate its origin per navigation, where the initial about:blank simply
+     * inherits ours. The shell has to carry the doctype because quirks/standards mode is fixed at parse time.
      */
     private writeInto(frame: HTMLIFrameElement, html: string): Document | null {
         const doc = frame.contentDocument
@@ -233,15 +243,35 @@ export class EditorComponent extends RaptorComponent {
             console.warn('[raptor21] editor: frame document is not accessible')
             return null
         }
-        doc.open()
-        doc.write(stripScripts(html))
-        doc.close()
 
+        const parsed = parseDocument(html)
+        removeExecutableScripts(parsed)
         if (!this.sandboxed) {
             // Without the sandbox the frame itself guarantees nothing, so the tree is scrubbed of what could run:
             // inline handlers, javascript: URLs, and nested browsing contexts that would each run their own.
-            stripHandlersAndJavascriptUrls(doc.documentElement)
-            for (const nested of [...doc.querySelectorAll('iframe, frame, object, embed')]) nested.remove()
+            stripHandlersAndJavascriptUrls(parsed.documentElement)
+            for (const nested of [...parsed.querySelectorAll('iframe, frame, object, embed')]) nested.remove()
+        }
+
+        doc.open()
+        doc.write(doctypeShell(parsed))
+        doc.close()
+
+        // Document-level comments (before/after <html>) are part of the author's source and `serialize` puts
+        // them back, so they travel too; the parser's implicit html/head/body is swapped for the author's tree.
+        for (const node of [...doc.childNodes]) {
+            if (node.nodeType === Node.COMMENT_NODE) node.remove()
+        }
+        const root = doc.importNode(parsed.documentElement, true)
+        doc.replaceChild(root, doc.documentElement)
+        let seenRoot = false
+        for (const node of [...parsed.childNodes]) {
+            if (node === parsed.documentElement) seenRoot = true
+            else if (node.nodeType === Node.COMMENT_NODE) {
+                const comment = doc.importNode(node, true)
+                if (seenRoot) doc.appendChild(comment)
+                else doc.insertBefore(comment, root)
+            }
         }
         return doc
     }

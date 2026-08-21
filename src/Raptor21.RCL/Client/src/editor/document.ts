@@ -46,7 +46,28 @@ export function detectShape(source: string): SourceShape {
 }
 
 /**
- * Removes anything that could execute, from the STRING, before it is ever parsed in the frame.
+ * Parses the source into an INERT document — `DOMParser` never runs scripts, never loads subresources and never
+ * fires handlers — so the tree can be inspected and scrubbed before a single node reaches the frame.
+ *
+ * A tree, not a regex over the string: `<scr<script>ipt>`, `</script foo>`, a `<script>` split across a comment
+ * — every one of those is a different thing to a regex and the same thing to the parser the frame would use.
+ * And the scrubbed tree is IMPORTED into the frame (`loadDocument`), never re-serialized and re-parsed, so a
+ * mutation-XSS payload that survives one parse cannot change shape on a second one: there is no second one.
+ */
+export function parseDocument(html: string): Document {
+    return new DOMParser().parseFromString(html, 'text/html')
+}
+
+/**
+ * Script types that cannot execute and are legitimate mail markup (Gmail/Schema.org actions, templates).
+ * An allowlist on purpose: the set of types a browser WILL run (no type, every JavaScript alias, `module`,
+ * `importmap`…) is long and engine-dependent; the set that is plainly data is short.
+ */
+const DATA_SCRIPT_TYPE = /^\s*(application\/(ld\+json|json)|text\/(plain|template|x-[\w.-]+))\s*$/i
+
+/**
+ * Removes every `<script>` the browser would treat as code — from the TREE, before it is imported into the
+ * frame. Data scripts (see `DATA_SCRIPT_TYPE`) survive.
  *
  * Defence in depth: the frame is `sandbox="allow-same-origin"` without `allow-scripts`, which already makes
  * every script inert — but the sandbox is a runtime property of one element and this strip is a property of
@@ -55,14 +76,27 @@ export function detectShape(source: string): SourceShape {
  * may legitimately carry `onclick` tracking attributes it expects to keep. They are only stripped by the
  * no-sandbox fallback in the component, where the frame itself no longer guarantees anything.
  */
-export function stripScripts(html: string): string {
-    // A <script> whose type is a data MIME (application/ld+json, application/json, text/plain…) cannot execute
-    // and is legitimate mail markup (Gmail/Schema.org actions), so it survives the strip; everything the
-    // browser would treat as JavaScript — no type, a JS type, module — goes.
-    const dataType = /^\s*<script\b[^>]*\btype\s*=\s*["']?\s*(application\/(ld\+json|json)|text\/(plain|template|x-[\w.-]+))\s*["']?/i
-    return html
-        .replace(/<script\b[\s\S]*?<\/script\s*>/gi, match => (dataType.test(match) ? match : ''))
-        .replace(/<script\b[^>]*\/?>/gi, match => (dataType.test(match) ? match : ''))
+export function removeExecutableScripts(root: ParentNode): void {
+    for (const script of [...root.querySelectorAll('script')]) {
+        if (!DATA_SCRIPT_TYPE.test(script.getAttribute('type') ?? '')) script.remove()
+    }
+}
+
+/**
+ * The doctype line for an empty frame shell, built from the PARSED doctype's fields — never from the source
+ * string. The shell is the only markup ever written into the frame, so it must be unable to carry anything but
+ * a doctype: the identifiers are reduced to characters that can neither close the declaration nor open a tag.
+ * Quirks/standards mode is fixed at parse time, which is why the shell has to carry the doctype at all — the
+ * imported tree must render the way the mail client would.
+ */
+export function doctypeShell(doc: Document): string {
+    const dt = doc.doctype
+    if (!dt) return ''
+    const clean = (value: string): string => value.replace(/[^\w .:\-\/+]/g, '')
+    const name = clean(dt.name) || 'html'
+    const publicId = dt.publicId ? ` PUBLIC "${clean(dt.publicId)}"` : ''
+    const systemId = dt.systemId ? `${dt.publicId ? '' : ' SYSTEM'} "${clean(dt.systemId)}"` : ''
+    return `<!DOCTYPE ${name}${publicId}${systemId}>`
 }
 
 /**
