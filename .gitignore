@@ -5,10 +5,11 @@ artifacts/
 *.user
 *.suo
 
-# The client bundle is COMMITTED on purpose — see Raptor21.RCL/wwwroot/dist/.
-# A .NET-only consumer must be able to clone, build and pack without Node installed, and the assembly
-# embeds this bundle, so an ignored dist would produce a silently asset-free package. CI rebuilds it from
-# Client/src with -p:RaptorBuildClient=true and the build fails if it is missing.
+# The client bundle is a BUILD OUTPUT (since 2026-09-01). The csproj builds it from Client/src when the
+# manifest is missing (RaptorBuildClient defaults to true on a fresh clone) and CI/release always rebuild it
+# with -p:RaptorBuildClient=true; RaptorClientBundleCheck still fails the build if no bundle exists, so an
+# asset-free package cannot be produced by accident. Node 22 is a prerequisite for the first build.
+wwwroot/dist/
 Client/node_modules/
 node_modules/
 

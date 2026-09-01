@@ -97,8 +97,15 @@
   </ItemGroup>
 
   <PropertyGroup>
-    <RaptorBuildClient Condition="'$(RaptorBuildClient)' == ''">false</RaptorBuildClient>
     <RaptorClientDir>$(MSBuildProjectDirectory)\Client</RaptorClientDir>
+    <!-- wwwroot/dist is a BUILD OUTPUT, not a source: it left git on 2026-09-01 after the third "committed
+         bundle is stale" CI failure in a week. A fresh clone therefore has no bundle, and the client build
+         runs by itself on that first build; once a bundle exists an ordinary `dotnet build` reuses it and
+         RaptorClientBundleFreshness warns when Client/src is newer. CI and the release pass
+         -p:RaptorBuildClient=true, so what ships is always built from source. Node 22 is a prerequisite
+         for the first build of a clone. -->
+    <RaptorBuildClient Condition="'$(RaptorBuildClient)' == '' And !Exists('$(MSBuildProjectDirectory)\wwwroot\dist\assets-manifest.json')">true</RaptorBuildClient>
+    <RaptorBuildClient Condition="'$(RaptorBuildClient)' == ''">false</RaptorBuildClient>
   </PropertyGroup>
 
   <Target Name="RaptorBuildClientBundle" BeforeTargets="BeforeBuild" Condition="'$(RaptorBuildClient)' == 'true'">
