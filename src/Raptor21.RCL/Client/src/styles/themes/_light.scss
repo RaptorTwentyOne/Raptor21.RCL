@@ -25,6 +25,29 @@
     --rg-warning-bg: var(--sp-warning-bg, rgba(217,119,6,.10));
     --rg-warning-border: var(--sp-warning-border, rgba(217,119,6,.35));
     --rg-info: var(--sp-info, #0891b2);         /* solid fill for an informational button */
+    /* Panel trios for the remaining tones, completing the set --rg-danger-* and --rg-warning-* already
+       model: a readable foreground, a 10% tint of the tone for the surface, and a 35% border. They exist
+       because a note and a badge need all five tones, and only two of the five had them -- `success` and
+       `info` shipped as solid button fills only, and the neutral tone had no colour owner at all.
+
+       MEASURED, NOT PICKED. Each foreground clears WCAG AA (4.5:1) on its own tint over BOTH the row
+       surface and the page ground: success 6.38 / 6.12, info 6.46 / 6.19, neutral 9.20 / 8.80. The first
+       draft of `success` used green-700 (#15803d) and scored 4.49 / 4.30 -- under AA on both, which is
+       why it is green-800 here while `danger` is a 700. The number decided it, not the ramp position. */
+    --rg-success-fg: var(--sp-success-fg, #166534);
+    --rg-success-bg: var(--sp-success-bg, rgba(22,163,74,.10));
+    --rg-success-border: var(--sp-success-border, rgba(22,163,74,.35));
+    --rg-info-fg: var(--sp-info-fg, #155e75);
+    --rg-info-bg: var(--sp-info-bg, rgba(8,145,178,.10));
+    --rg-info-border: var(--sp-info-border, rgba(8,145,178,.35));
+    /* The NEUTRAL tone. Not a colour statement -- the tone a badge takes when the value it carries is
+       simply a fact ("web", "mobile", "deprecated"), which in the consuming app is the single most
+       common one. It is deliberately a tint of the FOREGROUND, not of a hue, so it stays neutral under
+       any brand accent. --rg-muted is NOT usable here: it is the fg at 55-60% alpha and fails AA as
+       small text on a page ground. */
+    --rg-neutral-fg: var(--sp-neutral-fg, #334155);
+    --rg-neutral-bg: var(--sp-neutral-bg, rgba(24,29,31,.06));
+    --rg-neutral-border: var(--sp-neutral-border, rgba(24,29,31,.20));
     /* Glyph colours for the built-in boolean cell renderer (`rg-ico-check rg-ok` / `rg-ico-close rg-bad`).
        Text-on-surface colours, the role --rg-danger-fg models — not aliases of --rg-success / --rg-danger,
        which are solid button fills and take different values on the dark theme. Both themes carry the same

@@ -8,6 +8,22 @@ const EDGE_GAP = 8
 const ANCHOR_GAP = 4
 
 /**
+ * Opens or closes one popup AND keeps its trigger's `aria-expanded` truthful.
+ *
+ * The two have to move together or the attribute becomes a lie, which is worse than not having it: a
+ * screen-reader user is told the panel is closed while it is on screen. Every real open/close path goes
+ * through here. The trigger is found by `aria-controls` matching the panel's own id rather than by the
+ * column key, because a grid nested in a detail panel can carry the same key as its parent and the ids
+ * are already unique per grid.
+ */
+function setOpen(pop: Element, open: boolean): void {
+    pop.classList.toggle('rg-open', open)
+    if (!pop.id) return
+    const trigger = document.querySelector(`[aria-controls="${CSS.escape(pop.id)}"]`)
+    trigger?.setAttribute('aria-expanded', open ? 'true' : 'false')
+}
+
+/**
  * Dismisses every open popup on the page, in any grid.
  *
  * A free function rather than a method, so beginning a resize, a reorder drag or a cell edit can clear
@@ -15,7 +31,7 @@ const ANCHOR_GAP = 4
  */
 export function closeAllPopups(): void {
     for (const pop of document.querySelectorAll('.raptor-grid .rg-pop.rg-open')) {
-        pop.classList.remove('rg-open')
+        setOpen(pop, false)
     }
 }
 
@@ -38,6 +54,12 @@ export class FilterPopups extends GridFeature {
         // The set popup's search box filters its option labels client-side. Nothing here posts: the
         // input carries no name and no hx-trigger; only what the user CHECKS reaches the server.
         this.on('input', event => this.onSetSearch(event))
+
+        // CAPTURE, and that is the whole trick: the checkbox carries its own `hx-post` on `change`, and a
+        // listener bound to the element runs in the target phase — after any capture listener on an
+        // ancestor. Unchecking the sibling here therefore happens BEFORE htmx serialises the form, so one
+        // request goes out carrying one value. In the bubble phase the request would already be built.
+        this.on('change', event => this.onExclusiveSet(event), { capture: true })
 
         // Enter inside the search box must not submit the enclosing grid form: the form's hx-trigger
         // replaces the default submit trigger, so a native submit would bypass htmx entirely and
@@ -76,7 +98,7 @@ export class FilterPopups extends GridFeature {
      */
     closeAll(): void {
         for (const pop of this.findAll('.rg-pop.rg-open')) {
-            if (this.isOwn(pop)) pop.classList.remove('rg-open')
+            if (this.isOwn(pop)) setOpen(pop, false)
         }
     }
 
@@ -89,7 +111,10 @@ export class FilterPopups extends GridFeature {
         }
 
         const clear = closest<HTMLElement>(event.target, '[data-rg-clear]')
-        if (clear && this.isOwn(clear)) this.clearFilter(clear)
+        if (clear && this.isOwn(clear)) { this.clearFilter(clear); return }
+
+        const clearAll = closest<HTMLElement>(event.target, '[data-rg-scope-clearall]')
+        if (clearAll && this.isOwn(clearAll)) this.clearAllFilters()
     }
 
     private onDocumentClick(event: Event): void {
@@ -116,9 +141,69 @@ export class FilterPopups extends GridFeature {
         if (wasOpen) return
 
         this.position(pop, funnel)
-        pop.classList.add('rg-open')
+        setOpen(pop, true)
         // A set popup has no value input; its search box is the natural first stop instead.
         pop.querySelector<HTMLInputElement>('.rg-pop-input, [data-rg-set-search]')?.focus()
+    }
+
+    /**
+     * Drops every filter this grid has, from the scope line.
+     *
+     * NOT the drawer's `clearAll`: that one resolves `.rg-filter-drawer` from its own trigger and clears
+     * the inputs inside it, which is right for the drawer and blind to the HEADER popups — a different
+     * set of elements holding the same state. This clears the region's popups, which is where the
+     * filters a scope chip can name actually live.
+     *
+     * One request, not one per column: every cleared input would post on its own `change`, so the events
+     * are suppressed while the values are reset and a single refresh is fired at the end. Page returns to
+     * 1 for the same reason the drawer does it — dropping the filters changes which rows exist, so the
+     * page number no longer refers to anything.
+     */
+    private clearAllFilters(): void {
+        let touched = false
+        for (const pop of this.findAll('.rg-pop')) {
+            if (!this.isOwn(pop)) continue
+            for (const input of pop.querySelectorAll<HTMLInputElement>('.rg-pop-input')) {
+                if (input.value !== '') { input.value = ''; touched = true }
+            }
+            for (const box of pop.querySelectorAll<HTMLInputElement>('.rg-pop-check input:checked')) {
+                box.checked = false; touched = true
+            }
+            for (const op of pop.querySelectorAll<HTMLSelectElement>('.rg-pop-op')) op.selectedIndex = 0
+            // A set popup's search box narrows the option list; leaving it filled behind an emptied
+            // filter reads as options having vanished.
+            for (const search of pop.querySelectorAll<HTMLInputElement>('[data-rg-set-search]')) {
+                search.value = ''
+                for (const option of pop.querySelectorAll<HTMLElement>('.rg-pop-check')) option.classList.remove('rg-set-hidden')
+            }
+        }
+        if (!touched) return
+
+        const page = this.grid.form?.querySelector<HTMLInputElement>('input[name="page"]')
+        if (page) page.value = '1'
+
+        const htmx = (window as unknown as { htmx?: { trigger(el: Element, name: string): void } }).htmx
+        if (this.grid.form) htmx?.trigger(this.grid.form, 'raptor:refresh')
+    }
+
+    /**
+     * Keeps a two-valued boolean set filter to one choice.
+     *
+     * Only the OTHER options are cleared, never the one just clicked: unchecking the checked box still
+     * clears the filter, which is the one thing a real radio group cannot do and the reason this is not
+     * one. The server sees either one value or none, and never the both-ticked combination that means
+     * exactly what no filter means.
+     */
+    private onExclusiveSet(event: Event): void {
+        const box = event.target as HTMLInputElement | null
+        if (!box || box.type !== 'checkbox' || !box.checked) return
+
+        const group = closest<HTMLElement>(box, '[data-rg-set-exclusive]')
+        if (!group || !this.isOwn(group)) return
+
+        for (const other of group.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')) {
+            if (other !== box) other.checked = false
+        }
     }
 
     /**

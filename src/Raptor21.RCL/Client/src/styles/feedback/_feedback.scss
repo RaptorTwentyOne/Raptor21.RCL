@@ -1,0 +1,104 @@
+/* FEEDBACK — the inline note (`RaptorNote`) and the badge (`RaptorBadge`).
+
+   ONE TONE SYSTEM, TWO SURFACES. Both read the same `--rg-<tone>-fg / -bg / -border` trios from
+   `themes/_light.scss` and `_dark.scss`, so a host retones them together by overriding custom properties
+   and never by restyling a component. Nothing in this file names a colour: every value here is a token,
+   which is what makes the dark theme free.
+
+   LOGICAL PROPERTIES, unlike the older stylesheets in this package. These two components are the ones a
+   consumer scatters across every screen it has, so they are the ones that must mirror correctly under an
+   RTL locale; `padding-inline` costs nothing and `padding-left` costs a bug in Arabic. The rest of the
+   package has not been converted and this file is not pretending it has.
+
+   ICONS ARE INLINE SVG MASKS, tinted with `currentColor`, the same mechanism `grid/_grid.scss` uses — no
+   icon font, no external request, and the glyph takes the tone's foreground automatically. The base rule
+   is repeated here rather than shared because the grid's copy is scoped under `.raptor-grid`, and a note
+   is not inside a grid. */
+
+.rg-note {
+  display: flex;
+  align-items: flex-start;
+  gap: .625rem;
+  padding-block: .625rem;
+  padding-inline: .875rem;
+  border: 1px solid var(--rg-neutral-border);
+  border-radius: .375rem;
+  background: var(--rg-neutral-bg);
+  color: var(--rg-neutral-fg);
+  font-size: .8125rem;
+  line-height: 1.5;
+}
+
+.rg-note--info    { border-color: var(--rg-info-border);    background: var(--rg-info-bg);    color: var(--rg-info-fg); }
+.rg-note--success { border-color: var(--rg-success-border); background: var(--rg-success-bg); color: var(--rg-success-fg); }
+.rg-note--warning { border-color: var(--rg-warning-border); background: var(--rg-warning-bg); color: var(--rg-warning-fg); }
+.rg-note--danger  { border-color: var(--rg-danger-border);  background: var(--rg-danger-bg);  color: var(--rg-danger-fg); }
+
+.rg-note__icon {
+  flex: none;
+  inline-size: 1.05em;
+  block-size: 1.05em;
+  /* Optically aligned to the first line's cap height rather than its box, so the glyph does not ride
+     high next to a title. */
+  margin-block-start: .14em;
+  background-color: currentColor;
+  -webkit-mask: var(--rg-ico) no-repeat center / contain;
+  mask: var(--rg-ico) no-repeat center / contain;
+}
+
+.rg-note--info .rg-note__icon    { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-6h2zm0-8h-2V7h2z'/%3E%3C/svg%3E"); }
+.rg-note--success .rg-note__icon { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-1.2 14.2l-4-4 1.5-1.5 2.5 2.5 5-5 1.5 1.5z'/%3E%3C/svg%3E"); }
+.rg-note--warning .rg-note__icon { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2 1 21h22zm1 15h-2v-2h2zm0-4h-2V8h2z'/%3E%3C/svg%3E"); }
+.rg-note--danger .rg-note__icon  { --rg-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm3.5 12.1-1.4 1.4L12 13.4l-2.1 2.1-1.4-1.4 2.1-2.1-2.1-2.1 1.4-1.4 2.1 2.1 2.1-2.1 1.4 1.4-2.1 2.1z'/%3E%3C/svg%3E"); }
+
+/* `min-inline-size: 0` is what lets a long unbroken token (a URL, a SAP material number) wrap instead of
+   pushing the note wider than its container — a flex item's automatic minimum size is its content. */
+.rg-note__body { min-inline-size: 0; }
+.rg-note__title { margin: 0 0 .15rem; font-weight: 600; }
+.rg-note__body > :last-child { margin-block-end: 0; }
+
+/* ---- badge ---- */
+
+.rg-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .3em;
+  padding-block: .1rem;
+  padding-inline: .45rem;
+  border: 1px solid var(--rg-neutral-border);
+  border-radius: 999px;
+  background: var(--rg-neutral-bg);
+  color: var(--rg-neutral-fg);
+  /* 11px. The floor for functional text: a badge is read to make a decision, and 10px uppercase in a
+     dense table is where that stops being true. */
+  font-size: .6875rem;
+  font-weight: 600;
+  line-height: 1.45;
+  white-space: nowrap;
+  vertical-align: baseline;
+}
+
+.rg-badge--info    { border-color: var(--rg-info-border);    background: var(--rg-info-bg);    color: var(--rg-info-fg); }
+.rg-badge--success { border-color: var(--rg-success-border); background: var(--rg-success-bg); color: var(--rg-success-fg); }
+.rg-badge--warning { border-color: var(--rg-warning-border); background: var(--rg-warning-bg); color: var(--rg-warning-fg); }
+.rg-badge--danger  { border-color: var(--rg-danger-border);  background: var(--rg-danger-bg);  color: var(--rg-danger-fg); }
+
+.rg-badge__dot {
+  inline-size: .4em;
+  block-size: .4em;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* NO ADJACENT-SIBLING MARGIN. A first draft gave `.rg-badge + .rg-badge` a start margin, and the very
+   first consumer container it met (`.pd-pills`, `display:flex; gap:5px`) added its own 4px on top for 9px
+   between badges. Spacing between siblings belongs to whatever lays them out — a badge cannot know
+   whether it is in a flex row, a table cell, or a sentence. */
+
+@media (forced-colors: active) {
+  /* The tints and the tone borders are all dropped by a forced-colours theme, which would leave five
+     visually identical badges. A system border keeps them separable; the word inside is what says which
+     is which, which is the reason that word is never optional. */
+  .rg-note,
+  .rg-badge { border-color: CanvasText; }
+}

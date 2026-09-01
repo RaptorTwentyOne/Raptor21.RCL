@@ -1,0 +1,64 @@
+@namespace Raptor21.RCL.Feedback
+
+@* A badge: one short status word, tinted by tone, sized to sit inside a table cell without changing the
+   row's height.
+
+   IT IS A LABEL, NOT A CONTROL. No href, no onclick, no focus. A badge that can be clicked is a button or
+   a link that happens to look like a badge, and it must be one of those instead — otherwise it is
+   invisible to the keyboard and unreachable by a screen reader.
+
+   COLOUR IS NEVER THE ONLY CARRIER. The text inside says what the state is; the tone only makes it
+   findable while scanning. That is why there is no icon-only mode and no empty badge: strip the colour
+   (print, a colour-blind reader, a forced-colours theme) and the badge must still read correctly. *@
+
+<span class="@CssClass" @attributes="AdditionalAttributes">
+    @if (Dot)
+    {
+        <span class="rg-badge__dot" aria-hidden="true"></span>
+    }
+    @ChildContent
+</span>
+
+@code {
+
+    /// <summary>What the badge is saying. Drives the colour trio.</summary>
+    [Parameter]
+    public Tone Tone { get; set; } = Tone.Neutral;
+
+    /// <summary>
+    /// Prefixes a small filled circle in the tone's colour. For a list where every row carries a badge and
+    /// the words are long enough that the eye needs a fixed point to scan down.
+    /// </summary>
+    [Parameter]
+    public bool Dot { get; set; }
+
+    /// <summary>Extra classes appended after the tone class.</summary>
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Everything else (id, title, data-*) is splatted onto the badge.</summary>
+    [Parameter(CaptureUnmatchedValues = true)]
+    public IReadOnlyDictionary<string, object?>? AdditionalAttributes { get; set; }
+
+    private string CssClass
+    {
+        get
+        {
+            var cls = "rg-badge";
+            cls += Tone switch
+            {
+                Tone.Info => " rg-badge--info",
+                Tone.Success => " rg-badge--success",
+                Tone.Warning => " rg-badge--warning",
+                Tone.Danger => " rg-badge--danger",
+                _ => string.Empty,
+            };
+            if (Dot) cls += " rg-badge--dot";
+            if (!string.IsNullOrWhiteSpace(Class)) cls += $" {Class}";
+            return cls;
+        }
+    }
+
+}

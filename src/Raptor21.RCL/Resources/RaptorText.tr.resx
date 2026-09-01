@@ -82,6 +82,24 @@
   <data name="Grid_CloseFilters" xml:space="preserve">
     <value>Filtreleri kapat</value>
   </data>
+  <data name="Grid_SortAscending" xml:space="preserve">
+    <value>artan sırala</value>
+  </data>
+  <data name="Grid_SortDescending" xml:space="preserve">
+    <value>azalan sırala</value>
+  </data>
+  <data name="Grid_ScopeFilteredBy" xml:space="preserve">
+    <value>Filtre</value>
+  </data>
+  <data name="Grid_ScopeSelected" xml:space="preserve">
+    <value>{0} seçili</value>
+  </data>
+  <data name="Grid_ScopeRemoveFilter" xml:space="preserve">
+    <value>{0} filtresini kaldır</value>
+  </data>
+  <data name="Grid_ScrollRegion" xml:space="preserve">
+    <value>Tablo, kaydırılabilir</value>
+  </data>
   <data name="Grid_ExpandRow" xml:space="preserve">
     <value>Satırı genişlet</value>
   </data>

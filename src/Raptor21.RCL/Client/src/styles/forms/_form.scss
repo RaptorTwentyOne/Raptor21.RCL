@@ -164,6 +164,9 @@
     line-height: 1.2;
     white-space: nowrap;
     cursor: pointer;
+    /* The class is used on <a> as well as <button> — a link that has been given a button's shape must
+       not also carry a link's underline. */
+    text-decoration: none;
 
     &:hover { background: var(--rg-hover); }
     &:focus-visible { outline: 2px solid var(--rg-accent); outline-offset: 1px; }

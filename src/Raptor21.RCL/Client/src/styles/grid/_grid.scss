@@ -3,7 +3,12 @@
 /* Grid is a flex column: header (thead, sticky) + a flex-filling scroll body + a footer that is
    always visible. JS (fitGrid) sizes .raptor-grid to the remaining viewport height so the footer
    pins to the bottom of the screen; only the body between header and footer scrolls. */
-.raptor-grid { border: 1px solid var(--rg-border); border-radius: .375rem; overflow: hidden; background: var(--rg-bg); color: var(--rg-fg); display: flex; flex-direction: column; min-height: 0; }
+/* ---- THE GRID'S APPEARANCE IS TOKENIZED FROM HERE DOWN ----
+   Every token below defaults to EXACTLY what this file painted before, so a host that sets none of them
+   sees no change. They exist because a host with a committed visual world could previously only reach
+   this grid by overriding `.rg-*` selectors — the reference consumer had accumulated 24 such overrides,
+   which is a specificity war, not a design system. A dressed grid is now a declaration, not a fight. */
+.raptor-grid { border: var(--rg-grid-frame, 1px solid var(--rg-border)); border-radius: var(--rg-grid-radius, .375rem); overflow: hidden; background: var(--rg-bg); color: var(--rg-fg); display: flex; flex-direction: column; min-height: 0; }
 /* Load failure. htmx leaves the previous rows in place on a non-2xx, so say so out loud
    rather than letting stale rows read as the result of the user's filter. */
 .raptor-grid .rg-error { padding: .55rem .85rem; border-bottom: 1px solid var(--rg-danger-border); background: var(--rg-danger-bg); color: var(--rg-danger-fg); font-size: .8rem; font-weight: 500; }
@@ -15,19 +20,27 @@
 // columns filling the container to the pixel the table ran 0.5px over, scrollWidth rounded that up to
 // 1, and every grid that was meant to fit showed a 1px phantom horizontal scrollbar. (Separate is
 // also the healthier model under sticky pinned columns.)
-.raptor-grid table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; table-layout: fixed; }
-.raptor-grid thead .rg-head { background: var(--rg-header-bg); }
-.raptor-grid th, .raptor-grid td { border-bottom: 1px solid var(--rg-border); }
-.raptor-grid th { border-right: 1px solid var(--rg-border-soft); }
-.raptor-grid td:not(:last-child) { border-right: 1px solid var(--rg-border-soft); }
-.raptor-grid tbody tr:hover { background: var(--rg-hover); }
+.raptor-grid table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--rg-grid-font-size, 12px); table-layout: fixed; }
+.raptor-grid thead .rg-head { background: var(--rg-head-bg, var(--rg-header-bg)); }
+/* The horizontal rule and the vertical rule are separate tokens on purpose: "rows are separated, columns
+   are not" is a real and common typographic position, and it cannot be expressed with one value. */
+.raptor-grid th, .raptor-grid td { border-bottom: 1px solid var(--rg-row-rule, var(--rg-border)); }
+.raptor-grid th { border-right: 1px solid var(--rg-col-rule, var(--rg-border-soft)); }
+.raptor-grid td:not(:last-child) { border-right: 1px solid var(--rg-col-rule, var(--rg-border-soft)); }
+.raptor-grid tbody tr:hover { background: var(--rg-row-hover, var(--rg-hover)); }
 /* Selected row highlight (class toggled by raptor-grid-client on selection) — wins over zebra/hover. */
 .raptor-grid tbody tr.rg-row-sel { background: var(--rg-sel); }
-.raptor-grid th { padding: .5rem 1rem; font-size: 12px; font-weight: 700; color: var(--rg-fg); white-space: nowrap; text-align: left; position: relative; }
+/* A column head is where a table sounds like itself: size, weight, case and tracking together are the
+   difference between a spreadsheet and a reference book. All four are tokens; none of them was reachable. */
+.raptor-grid th { padding: var(--rg-head-padding, .5rem 1rem); font-size: var(--rg-head-font-size, 12px); font-weight: var(--rg-head-weight, 700); letter-spacing: var(--rg-head-tracking, normal); text-transform: var(--rg-head-transform, none); color: var(--rg-head-color, var(--rg-fg)); white-space: nowrap; text-align: left; position: relative; }
 /* Cells truncate to one line by default; .rg-wrap columns wrap (auto-height). */
 .raptor-grid.rg-compact th { padding: .35rem .7rem; }
 .raptor-grid.rg-compact td { padding: .3rem .7rem; }
-.raptor-grid td { padding: .55rem 1rem; color: var(--rg-fg); vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* `font-variant-numeric` ships as a browser default that belongs to no design system, and in a data grid
+   it is load-bearing: proportional digits make a column of codes and amounts fail to stack, so the eye
+   cannot compare them down the column — the entire reason the column is vertical. Tokenized, default
+   unchanged. */
+.raptor-grid td { padding: var(--rg-cell-padding, .55rem 1rem); color: var(--rg-fg); vertical-align: var(--rg-cell-align, middle); font-variant-numeric: var(--rg-cell-numeric, normal); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .raptor-grid td.rg-wrap { white-space: normal; overflow: visible; text-overflow: clip; vertical-align: top; word-break: break-word; }
 .raptor-grid td.rg-wrap .rg-trunc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
 /* Resize: frozen (px) layout only kicks in once a column is dragged; grids left alone stay auto/responsive. */
@@ -83,7 +96,11 @@ body.rg-col-resizing .raptor-grid .rg-resize::after { background: var(--rg-accen
    funnel out and under the next column. */
 .raptor-grid .rg-hd { display: flex; align-items: center; gap: .4rem; min-width: 0; }
 .raptor-grid .rg-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.raptor-grid .rg-sort { flex: 1 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: .25rem; cursor: pointer; background: none; border: 0; color: inherit; font: inherit; font-weight: 600; padding: .25rem 0; text-align: left; }
+/* `font: inherit` is NOT enough on a button: the shorthand carries family/size/weight/line-height and
+   NOT text-transform or letter-spacing, so a host that sets either on `th` got it on its plain column
+   titles and lost it on every sortable one -- measured on a real page as nine roman heads beside five
+   uppercase ones. `font-weight` stays explicit because this button is deliberately bolder than a title. */
+.raptor-grid .rg-sort { flex: 1 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: .25rem; cursor: pointer; background: none; border: 0; color: inherit; font: inherit; font-weight: 600; text-transform: inherit; letter-spacing: inherit; padding: .25rem 0; text-align: left; }
 /* Truncate the label inside the sort button, but never the sort arrow beside it. */
 .raptor-grid .rg-sort > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .raptor-grid .rg-sort .rg-arrow, .raptor-grid .rg-sort .rg-arrow-idle { flex: 0 0 auto; }
@@ -94,6 +111,26 @@ body.rg-col-resizing .raptor-grid .rg-resize::after { background: var(--rg-accen
 /* The funnel never shrinks and never gets pushed out: flex:0 0 auto keeps its width, and because the
    label beside it now truncates, a narrow column loses title characters rather than dropping the funnel
    under the next column. min-width on the button guards against it collapsing to nothing. */
+/* The scroll region is focusable now (see RaptorGridRegion.razor), so it needs to SHOW that it has
+   focus — an invisible tab stop is worse than none, because the keyboard user's arrow keys start
+   scrolling something they cannot see they are on. Inset, so the ring is not clipped by the overflow. */
+/* ---- SCOPE LINE: what this reading covers, above the table it covers ----
+   Tokenized like the rest of the grid's appearance, defaults chosen to sit quietly in the library's own
+   look. A host with a committed world redresses it without touching a selector. */
+.raptor-grid .rg-scope { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .6rem; padding: var(--rg-scope-padding, .5rem 1rem); border-bottom: 1px solid var(--rg-row-rule, var(--rg-border)); font-size: var(--rg-scope-font-size, .75rem); }
+.raptor-grid .rg-scope-label { color: var(--rg-scope-label-color, var(--rg-muted)); text-transform: var(--rg-scope-label-transform, none); letter-spacing: var(--rg-scope-label-tracking, normal); font-weight: var(--rg-scope-label-weight, 400); }
+.raptor-grid .rg-scope-chip { display: inline-flex; align-items: center; gap: .3rem; padding: .1rem .2rem .1rem .45rem; border: 1px solid var(--rg-scope-chip-border, var(--rg-border)); border-radius: var(--rg-scope-chip-radius, .2rem); background: var(--rg-scope-chip-bg, var(--rg-surface)); }
+/* The column is the question and the value is the answer; the answer is what the eye is scanning for. */
+.raptor-grid .rg-scope-chip-col { color: var(--rg-muted); }
+.raptor-grid .rg-scope-chip-val { font-weight: 600; }
+.raptor-grid .rg-scope-chip-x { display: inline-flex; align-items: center; justify-content: center; width: 1.1rem; height: 1.1rem; border: 0; border-radius: .2rem; background: none; color: inherit; opacity: .55; cursor: pointer; font-size: .9em; }
+.raptor-grid .rg-scope-chip-x:hover { opacity: 1; }
+.raptor-grid .rg-scope-chip-x:focus-visible { outline: 2px solid var(--rg-accent); outline-offset: 1px; opacity: 1; }
+/* Pushed to the inline end: it is the exit, and an exit belongs where the line finishes. */
+.raptor-grid .rg-scope-clear { margin-inline-start: auto; border: 0; background: none; padding: 0; color: var(--rg-accent); cursor: pointer; font: inherit; font-size: var(--rg-scope-clear-font-size, inherit); text-transform: var(--rg-scope-clear-transform, none); letter-spacing: var(--rg-scope-clear-tracking, normal); }
+.raptor-grid .rg-scope-clear:hover { text-decoration: underline; }
+
+.raptor-grid .rg-scrollwrap:focus-visible { outline: 2px solid var(--rg-accent); outline-offset: -2px; }
 .raptor-grid .rg-funnel { flex: 0 0 auto; min-width: 1.4rem; display: inline-flex; align-items: center; justify-content: center; width: 1.4rem; height: 1.4rem; border: 0; border-radius: .2rem; background: none; color: inherit; cursor: pointer; opacity: .4; }
 .raptor-grid .rg-funnel:hover { opacity: .85; background: rgba(0,0,0,.05); }
 .dark .raptor-grid .rg-funnel:hover { background: rgba(255,255,255,.08); }
@@ -302,10 +339,17 @@ body.rg-col-resizing .raptor-grid .rg-resize::after { background: var(--rg-accen
 /* Pinned (sticky) columns — the client sets position/left/right/z-index; these supply the opaque
    backgrounds (so scrolled cells don't show through) matching zebra/hover/selection, plus a
    divider shadow. Header pinned cells sit above everything (z from JS). */
-.raptor-grid td.rg-pin { background: var(--rg-bg); }
-.raptor-grid tbody tr:hover td.rg-pin { background: linear-gradient(var(--rg-hover), var(--rg-hover)), var(--rg-bg); }
-.raptor-grid tbody tr.rg-row-sel td.rg-pin { background: linear-gradient(var(--rg-sel), var(--rg-sel)), var(--rg-bg); }
-.raptor-grid thead th.rg-pin { background: var(--rg-header-bg); }
+/* A PINNED CELL HAS TO BE OPAQUE — rows scroll underneath it — but "opaque" is not the same as "a
+   different colour". These painted `--rg-bg` / `--rg-header-bg` while the rest of the table had moved to
+   whatever the host set, so on a flat-ground consumer the pinned column came back as a grey slab against
+   the page: measured rgb(43,43,43) and rgb(54,54,54) over a rgb(17,19,21) ground, and the pinned head's
+   text contrast fell from 7.33:1 to 4.76:1 for no reason but the mismatch.
+   `--rg-pin-bg` defaults to `--rg-bg`, and the head reuses the same `--rg-head-bg` the unpinned heads
+   already read — so an undressed grid is unchanged and a dressed one stays one colour. */
+.raptor-grid td.rg-pin { background: var(--rg-pin-bg, var(--rg-bg)); }
+.raptor-grid tbody tr:hover td.rg-pin { background: linear-gradient(var(--rg-row-hover, var(--rg-hover)), var(--rg-row-hover, var(--rg-hover))), var(--rg-pin-bg, var(--rg-bg)); }
+.raptor-grid tbody tr.rg-row-sel td.rg-pin { background: linear-gradient(var(--rg-sel), var(--rg-sel)), var(--rg-pin-bg, var(--rg-bg)); }
+.raptor-grid thead th.rg-pin { background: var(--rg-head-bg, var(--rg-header-bg)); }
 /* Sticky cells drop their collapsed borders — redraw the bottom (row) + side (column) borders,
    plus the pinned-edge divider shadow, via box-shadow so pinned columns keep their gridlines. */
 .raptor-grid td.rg-pin, .raptor-grid th.rg-pin { box-shadow: inset 0 -1px 0 var(--rg-border); }

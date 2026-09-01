@@ -1,0 +1,88 @@
+@namespace Raptor21.RCL.Feedback
+
+@* An inline note: a bordered, tinted strip that explains, warns, or reports a failure in place.
+
+   NOT A TOAST. A toast is transient, floats in the top layer, and is announced when it arrives. This is
+   part of the page — it is rendered on the server, it stays, and it belongs next to whatever it is about.
+   Use the toast for "your change was saved", use this for "this screen is showing stale data".
+
+   THE ROLE IS NOT ALWAYS `alert`. `role="alert"` is assertive: it interrupts a screen-reader user
+   mid-sentence, and it is meant for something that JUST HAPPENED. A note that is already on the page when
+   it loads has not just happened, and marking every one of them assertive is how a screen reader becomes
+   noise. So only Danger takes it by default (a failure the reader must not miss), and `Role` overrides in
+   both directions — pass `Role="status"` for a polite live update, or `Role=""` for a note that is simply
+   part of the prose. *@
+
+<div class="@CssClass" role="@NullIfEmpty(ResolvedRole)" @attributes="AdditionalAttributes">
+    @if (ShowIcon)
+    {
+        <span class="rg-note__icon" aria-hidden="true"></span>
+    }
+    <div class="rg-note__body">
+        @if (!string.IsNullOrWhiteSpace(Title))
+        {
+            <p class="rg-note__title">@Title</p>
+        }
+        @ChildContent
+    </div>
+</div>
+
+@code {
+
+    /// <summary>What the note is saying. Drives the colour trio and the default icon and role.</summary>
+    [Parameter]
+    public Tone Tone { get; set; } = Tone.Neutral;
+
+    /// <summary>An optional bolded first line. Omitted from the markup entirely when not supplied.</summary>
+    [Parameter]
+    public string? Title { get; set; }
+
+    /// <summary>
+    /// Suppresses the tone's icon. The icon is decorative (<c>aria-hidden</c>) and repeats what the colour
+    /// says, so a dense stack of notes reads better without it.
+    /// </summary>
+    [Parameter]
+    public bool NoIcon { get; set; }
+
+    /// <summary>
+    /// ARIA role. Defaults to <c>alert</c> for <see cref="Tone.Danger"/> and nothing otherwise — see the
+    /// note at the top of this file. Pass an empty string to force it off.
+    /// </summary>
+    [Parameter]
+    public string? Role { get; set; }
+
+    /// <summary>Extra classes appended after the tone class.</summary>
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Everything else (id, hx-*, data-*, aria-*) is splatted onto the note.</summary>
+    [Parameter(CaptureUnmatchedValues = true)]
+    public IReadOnlyDictionary<string, object?>? AdditionalAttributes { get; set; }
+
+    private bool ShowIcon => !NoIcon && Tone != Tone.Neutral;
+
+    private string ResolvedRole => Role ?? (Tone == Tone.Danger ? "alert" : string.Empty);
+
+    private static string? NullIfEmpty(string s) => string.IsNullOrEmpty(s) ? null : s;
+
+    private string CssClass
+    {
+        get
+        {
+            var cls = "rg-note";
+            cls += Tone switch
+            {
+                Tone.Info => " rg-note--info",
+                Tone.Success => " rg-note--success",
+                Tone.Warning => " rg-note--warning",
+                Tone.Danger => " rg-note--danger",
+                _ => string.Empty,
+            };
+            if (!string.IsNullOrWhiteSpace(Class)) cls += $" {Class}";
+            return cls;
+        }
+    }
+
+}
