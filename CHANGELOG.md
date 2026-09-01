@@ -11,6 +11,9 @@ default only. Tag and heading below must agree.
 
 ## [Unreleased]
 
+### Changed
+- `wwwroot/dist` is no longer committed: the bundle is a build output. A fresh clone builds it on its first `dotnet build` (`RaptorBuildClient` defaults to `true` when the manifest is missing; Node 22 required), CI and the release always rebuild it, and the "Verify committed bundle is up to date" CI step is gone with the thing it verified.
+
 ### Added
 - `RaptorGrid.FitViewport` (default `true`): set `false` on a grid that is one section of a page (detail-page tabs) so it takes its rows' height instead of filling the viewport; rendered as `data-rg-fit="false"`, honoured by `GridLayout.fit()`. Nested grids are unaffected.
 

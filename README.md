@@ -144,15 +144,17 @@ connection.
 
 ## Building from source
 
-The client bundle is built with rspack and committed under `wwwroot/dist`, so a .NET-only contributor never
-needs Node installed. If you change anything under `Client/src`, rebuild it:
+The client bundle (`wwwroot/dist`) is a build output and is not committed. Node 22 is a prerequisite: the
+first `dotnet build` of a fresh clone runs `npm ci && npm run build` in `Client/` by itself (the manifest is
+missing, so `RaptorBuildClient` defaults to `true`). After that an ordinary `dotnet build` reuses the bundle
+and warns when `Client/src` is newer; rebuild it with
 
 ```bash
-cd Client && npm ci && npm run build
+cd Client && npm run build
 ```
 
-The build warns when `wwwroot/dist` is older than `Client/src`, and fails outright when the bundle is
-missing. CI regenerates it with `-p:RaptorBuildClient=true`.
+or build with `-p:RaptorBuildClient=true`, which is what CI and the release always do. The build fails
+outright when no bundle exists, so a package without its stylesheet and script cannot be produced.
 
 ## Licence
 
