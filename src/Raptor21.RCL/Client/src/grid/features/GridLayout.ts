@@ -142,6 +142,13 @@ export class GridLayout extends GridFeature {
             this.el.style.height = ''
             return
         }
+        // A section grid (a detail-page tab, a panel under a form) opted out: it is as tall as its rows and
+        // the page scrolls. No `rg-nested` here -- that class also caps the body at 60vh, which is the
+        // detail-panel case, not this one.
+        if (!this.grid.fitViewport) {
+            this.el.style.height = ''
+            return
+        }
         const top = this.el.getBoundingClientRect().top
         const height = Math.max(MIN_GRID_HEIGHT, Math.round(window.innerHeight - top - GRID_BOTTOM_GAP))
         this.el.style.height = `${height}px`

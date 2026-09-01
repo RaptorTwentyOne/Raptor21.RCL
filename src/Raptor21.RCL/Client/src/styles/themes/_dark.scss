@@ -24,6 +24,20 @@
     --rg-warning-bg: var(--sp-warning-bg, rgba(245,158,11,.14));
     --rg-warning-border: var(--sp-warning-border, rgba(245,158,11,.40));
     --rg-info: var(--sp-info, #06b6d4);         /* solid fill for an informational button */
+    /* Dark twins of the three trios added to _light.scss -- lightened for a dark surface exactly as
+       --rg-danger-fg is, on the same 14% tint / 40% border the dark danger and warning trios use.
+       Measured on both the row surface and the app ground: success 7.91 / 10.63, info 7.78 / 10.41,
+       neutral 7.43 / 10.24. The neutral tint is of WHITE here rather than of the foreground, because on
+       this theme the foreground IS white and a tint of it would be invisible. */
+    --rg-success-fg: var(--sp-success-fg, #86efac);
+    --rg-success-bg: var(--sp-success-bg, rgba(34,197,94,.14));
+    --rg-success-border: var(--sp-success-border, rgba(34,197,94,.40));
+    --rg-info-fg: var(--sp-info-fg, #67e8f9);
+    --rg-info-bg: var(--sp-info-bg, rgba(6,182,212,.14));
+    --rg-info-border: var(--sp-info-border, rgba(6,182,212,.40));
+    --rg-neutral-fg: var(--sp-neutral-fg, #cbd5e1);
+    --rg-neutral-bg: var(--sp-neutral-bg, rgba(255,255,255,.08));
+    --rg-neutral-border: var(--sp-neutral-border, rgba(255,255,255,.22));
     /* Boolean-cell glyph colours — see _light.scss for why these are their own tokens rather than aliases
        of --rg-success / --rg-danger. Dark repeats light's values. */
     --rg-ok-fg: var(--sp-ok-fg, #16a34a);

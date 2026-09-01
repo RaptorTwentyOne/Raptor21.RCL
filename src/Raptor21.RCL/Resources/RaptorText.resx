@@ -84,6 +84,24 @@
   <data name="Grid_CloseFilters" xml:space="preserve">
     <value>Close filters</value>
   </data>
+  <data name="Grid_SortAscending" xml:space="preserve">
+    <value>sort ascending</value>
+  </data>
+  <data name="Grid_SortDescending" xml:space="preserve">
+    <value>sort descending</value>
+  </data>
+  <data name="Grid_ScopeFilteredBy" xml:space="preserve">
+    <value>Filtered by</value>
+  </data>
+  <data name="Grid_ScopeSelected" xml:space="preserve">
+    <value>{0} selected</value>
+  </data>
+  <data name="Grid_ScopeRemoveFilter" xml:space="preserve">
+    <value>Remove the {0} filter</value>
+  </data>
+  <data name="Grid_ScrollRegion" xml:space="preserve">
+    <value>Table, scrollable</value>
+  </data>
   <data name="Grid_ExpandRow" xml:space="preserve">
     <value>Expand row</value>
   </data>

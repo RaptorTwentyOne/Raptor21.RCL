@@ -12,6 +12,138 @@ default only. Tag and heading below must agree.
 ## [Unreleased]
 
 ### Added
+- `RaptorGrid.FitViewport` (default `true`): set `false` on a grid that is one section of a page (detail-page tabs) so it takes its rows' height instead of filling the viewport; rendered as `data-rg-fit="false"`, honoured by `GridLayout.fit()`. Nested grids are unaffected.
+
+- **A two-valued boolean Set filter is now one choice, not two checkboxes.** Ticking both "Blocked" and
+  "Not Blocked" is provably identical to no filter at all — a boolean column has exactly two states — so
+  the control was offering a combination that could not mean anything.
+
+  Checking one now unchecks the other, in the CAPTURE phase: the checkbox carries its own `hx-post` on
+  `change` and an element-bound listener runs in the target phase, after any capture listener on an
+  ancestor, so the sibling is cleared before htmx serialises the form and one request goes out carrying
+  one value. Clicking the checked box again still clears the filter, which is the one thing a real
+  `<radio>` group cannot do and the reason this is not one.
+
+  **Boolean only, deliberately.** A two-option TEXT set is not the same thing: its options can be a
+  subset of the real domain — a user's two permitted sales organisations out of forty — and there
+  selecting both is a genuine constraint.
+
+### Fixed
+
+- **An active tab's LABEL was drawn in the accent** and measured 2.99:1 against a light page ground —
+  under AA for text — on a consumer that had flattened its cards away. The accent was never doing
+  necessary work there: the 2px accent rule under the tab already marks the selection, and marks it by
+  position rather than by hue, so a colour-blind or forced-colours reader keeps the signal. The label is
+  full ink at 600 now (16.26:1 light / 18.62:1 dark) and `--rg-tab-active-color` stays open for a host
+  that wants the accent back.
+
+- **Pinned cells painted their own colour and broke a dressed grid's flat ground.** `td.rg-pin` and
+  `th.rg-pin` hardcoded `--rg-bg` / `--rg-header-bg` while the rest of the table read the host's tokens,
+  so a consumer that had dressed its grid got the pinned column back as a grey slab: measured
+  rgb(43,43,43) and rgb(54,54,54) over a rgb(17,19,21) ground, with the pinned head's text contrast
+  falling from 7.33:1 to 4.76:1 purely from the mismatch. A pinned cell must be OPAQUE — rows scroll
+  under it — but that is not the same as being a different colour. `--rg-pin-bg` now covers the body
+  (defaulting to `--rg-bg`) and the head reuses the same `--rg-head-bg` the unpinned heads already read.
+
+- **Scope chips printed a set filter's VALUE instead of its label** — `Order Blockage: true` where the
+  user had ticked "Blocked". The chip now resolves the label from the column's `SetOptions`, falling back
+  to the raw value when it cannot (a Guid in a chip is unhelpful but honest; inventing a word is worse).
+
+- **The scope line** — a grid states what narrowed it, above the table it narrowed. Before this a
+  filtered grid announced itself with ONE signal: the funnel glyph changed from the foreground colour to
+  the accent. Same glyph, same size, no count, no dot; measured on a consuming page at 3.12:1 against its
+  surround. A person who left the tab and came back could not tell 32,341 rows from 14.
+
+  Each active filter renders a chip reading `Country: TR` or `Sales Organization: 2 selected`, and each
+  chip's remove button carries `data-rg-clear="<key>"` — the same attribute the popup's own "Clear
+  filter" button uses, handled by the same code. A chip is a second way to reach one behaviour, not a
+  second behaviour. A `Clear all` drops every filter in the region in ONE request rather than one per
+  column, and returns the page to 1.
+
+  **It states the filters and not the count.** The pager already prints the server's range and total; a
+  second element computing its own count is how a footer ends up disagreeing with the query behind it.
+  Rendered only when something is actually filtered — an unfiltered grid is not narrowed, and a line
+  saying so every time is chrome people stop reading.
+
+  Twelve `--rg-scope-*` tokens dress it, defaults chosen to sit quietly in the library's own look.
+
+- **The grid's appearance is tokenized.** Fourteen new `--rg-*` tokens cover the grid frame and radius,
+  the table's base size, the head's size/weight/tracking/case/colour/background/padding, the row rule and
+  the column rule separately, the row hover, cell padding, cell vertical alignment, and
+  `font-variant-numeric`. **Every one defaults to exactly what this file painted before**, so a host that
+  sets none of them sees no change at all.
+
+  They exist because a host with a committed visual world could previously only reach this grid by
+  overriding `.rg-*` selectors — the reference consumer had accumulated 24 such overrides, which is a
+  specificity war rather than a design system. Dressing the grid is now a declaration on the token layer.
+
+  `font-variant-numeric` is in the list for a reason it is easy to miss: it ships as a browser default
+  that belongs to no design system, and in a data grid it is load-bearing. Proportional digits stop a
+  column of codes and amounts from stacking, which is the entire reason the column is vertical.
+
+- **Fixed: `.rg-sort` did not inherit the head's case or tracking.** `font: inherit` carries
+  family/size/weight/line-height and NOT `text-transform` or `letter-spacing`, so the UA button style won
+  and a host that set either on `th` got it on its plain column titles and lost it on every sortable one.
+  Measured on a real page as nine roman heads beside five uppercase ones. Both now inherit explicitly.
+
+- **Grid accessibility: six defects that were the same defect twenty-eight times.** Found by a critique
+  of one consuming page and fixed in the library, because every one of them was the grid's, not the
+  page's.
+
+  `aria-sort` now states the current sort on the `<th>`, and the sort button appends what a click will
+  DO (`Customer Code, sort ascending`) in a `.rg-sr-only` span — split that way so the column answers
+  "how is this sorted" and the control answers "what happens if I press". Previously neither existed:
+  the sort was an arrow glyph and nothing else, and the button announced as `Customer Code, button`.
+
+  The page-size `<select>` is wrapped in a `<label>` rather than sitting beside a `<span>`. It announced
+  as `combo box, 25` with no indication of what it sized. A wrapping label needs no id, so a second grid
+  on the same page cannot collide with it.
+
+  **`.rg-scrollwrap` is focusable** (`tabindex="0"`, `role="region"`, a localized name, and a
+  `:focus-visible` ring inset so the overflow does not clip it). Chrome only auto-focuses a scroll
+  container with no focusable children, and this one has a sort button in most headers — so it never
+  entered the tab order, and columns whose cells hold no links were unreachable by keyboard entirely.
+  Measured on a real page: 577px of table hidden with no way to reach it.
+
+  The column-filter funnel declares `aria-haspopup` / `aria-expanded` / `aria-controls`, and
+  `FilterPopups.ts` now keeps `aria-expanded` truthful through one `setOpen()` helper that owns every
+  open/close path. The trigger is located by `aria-controls` matching the panel id, not by column key,
+  so a grid nested in a detail panel cannot flip its parent's funnel.
+
+  The pager's range line carries `role="status"`. Its limit is stated in the markup: htmx swaps the whole
+  region, so the live region is re-inserted rather than mutated and assistive technologies differ on
+  whether they announce that. It is a real improvement over zero live regions on the page and it is not
+  a guarantee.
+
+  Three localization keys added in both en and tr: `Grid_SortAscending`, `Grid_SortDescending`,
+  `Grid_ScrollRegion`.
+
+- **`RaptorNote` and `RaptorBadge`** (`Feedback/`, styles `feedback/_feedback.scss`) — the inline note
+  and the status badge, the two surfaces every consuming screen reaches for and neither of which this
+  package shipped. They exist because the reference consumer had grown **three** note vocabularies
+  (`.pd-note` 68 uses, `.nf-note` 37, Bootstrap `.alert` 28 — 133 across ~60 files) and **two** badge
+  vocabularies (`.pd-pill` 147, `.badge` 48), plus a C# helper building badge markup as a hand-escaped
+  HTML string. None of that was a design decision; it was five independent answers to two questions.
+
+  Both read one `Tone` enum — Neutral, Info, Success, Warning, Danger — so a failed row's badge and the
+  note explaining it cannot disagree about which red they mean. `Tone` is deliberately **not**
+  `ButtonVariant`: a variant says how loud an action is, a tone says what a piece of information means.
+
+  `RaptorNote` takes `role="alert"` only on Danger. `role="alert"` is assertive and is for something that
+  just happened; a server-rendered note is already on the page when it loads, and marking every one of
+  them assertive is how a screen reader becomes noise. `Role` overrides in both directions.
+
+  `RaptorBadge` is a label, never a control — no href, no click, no focus — and it has no icon-only mode,
+  because the word inside is what has to survive print, a colour-blind reader and a forced-colours theme.
+
+### Added — tokens
+
+- **`--rg-success-*`, `--rg-info-*` and `--rg-neutral-*` panel trios** (fg / bg / border) in both themes,
+  completing the set `--rg-danger-*` and `--rg-warning-*` already modelled. Success and info previously
+  shipped as solid button fills only and the neutral tone had no colour owner at all, which is why a
+  consumer needing five tones had to invent them. Every foreground is measured against its own tint over
+  both the row surface and the page ground and clears WCAG AA in both themes — the first draft of
+  `--rg-success-fg` was green-700 and scored 4.49:1 on light, under AA, so it ships as green-800.
 
 - **`RaptorEditor`** — an HTML mail-template editor (`Forms/RaptorEditor.razor`, client chunk
   `editor`). It edits a **whole document** — `<!DOCTYPE html><html><head><style>…</style></head><body>…` —

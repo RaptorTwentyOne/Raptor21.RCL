@@ -41,6 +41,11 @@ export class GridComponent extends RaptorComponent {
         return this.el.parentElement?.closest('.raptor-grid') != null
     }
 
+    /** False when the consumer opted out of viewport filling (`FitViewport="false"` -> data-rg-fit="false"). */
+    get fitViewport(): boolean {
+        return this.el.dataset.rgFit !== 'false'
+    }
+
     /** Mobile stacked-card mode, toggled by the layout feature at the breakpoint. */
     get isCards(): boolean {
         return this.el.classList.contains('rg-cards')

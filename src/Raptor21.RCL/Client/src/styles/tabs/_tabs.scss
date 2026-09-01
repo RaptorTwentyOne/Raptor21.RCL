@@ -41,8 +41,16 @@
     > i { font-size: 1.05em; line-height: 1; }
 }
 
+/* THE UNDERLINE CARRIES THE SELECTION; THE LABEL CARRIES THE WORD.
+   The active label used to be drawn in `--rg-accent` as well, which measured 2.99:1 against a light page
+   ground -- under AA for text -- on a consumer that had flattened its cards away. It was never doing
+   necessary work: a 2px accent rule under the tab already says which one is chosen, and it says it by
+   position rather than by hue, so a colour-blind or forced-colours reader keeps the signal. Full ink and
+   a heavier weight make the label the most readable thing in the row, which is what a selected tab
+   should be. `--rg-tab-active-color` stays open for a host that wants the accent back. */
 .rg-tab-active {
-    color: var(--rg-accent);
+    color: var(--rg-tab-active-color, var(--rg-fg));
+    font-weight: 600;
     border-bottom-color: var(--rg-accent);
 }
 

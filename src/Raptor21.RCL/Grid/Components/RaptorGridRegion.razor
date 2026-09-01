@@ -160,6 +160,7 @@
     {
     <div id="@regionId" data-rg-component="grid" class="@gridClass"
          data-grid-id="@Id" data-rg-virtual="@(VirtualScroll ? "true" : "false")" data-rg-total="@prepared.TotalCount"
+         data-rg-fit="@(FitViewport ? null : "false")"
          data-rg-filter-entry="@filterEntryMark"
          data-rg-reorder-endpoint="@(RowReorder ? _endpoints.Reorder : null)"
          data-rg-cell-endpoint="@_endpoints.Cell">
@@ -183,7 +184,77 @@
                 <input type="hidden" name="ctx_@kv.Key" value="@kv.Value"/>
             }
 
-            <div id="@(Id)-scroll" class="rg-scrollwrap">
+            @* ---- THE SCOPE LINE ----------------------------------------------------------------
+               WHAT THIS READING COVERS, in words, above the table it covers.
+
+               Before this, a filtered grid announced itself with ONE signal: the funnel glyph changed
+               from the foreground colour to the accent. Same glyph, same size, no count, no dot. Measured
+               on a consuming page at 3.12:1 against its surround -- barely over the 3:1 non-text floor --
+               and invisible to anyone who does not know the unfiltered colour by heart. A person who
+               leaves the tab and comes back cannot tell 32,341 rows from 14.
+
+               IT STATES THE FILTERS AND NOT THE COUNT. The pager already prints the range and the total,
+               and it prints the SERVER's numbers; a second element computing its own count is how a
+               footer ends up disagreeing with the query behind it. So this says what narrowed the
+               reading, the pager says how much is left, and neither repeats the other.
+
+               EACH CHIP REMOVES ITS OWN FILTER, and the remove button carries `data-rg-clear="<key>"` --
+               the same attribute the popup's own "Clear filter" button uses, handled by the same code in
+               FilterPopups.ts. A chip is a second way to reach one behaviour, not a second behaviour.
+
+               Rendered only when something is actually filtered: an unfiltered grid is not narrowed, and
+               a line saying so every time is the kind of chrome people stop reading. *@
+            @{
+                var scopeChips = columns
+                    .Where(c => _filterValues.ContainsKey(c.Key) || _setSelections.ContainsKey(c.Key))
+                    .Select(c =>
+                    {
+                        var isSet = _setSelections.TryGetValue(c.Key, out var picked);
+                        var op = isSet ? string.Empty : OpLabel(c, _filterOps.GetValueOrDefault(c.Key));
+                        return new
+                        {
+                            c.Key,
+                            // The column and the operator are ONE phrase: "Country:" or "Customer Code
+                            // starts with". Splitting the operator into its own node put a space before
+                            // the colon -- "Country : TR" -- which is the kind of detail that makes a
+                            // whole surface look unfinished.
+                            Term = op.Length == 0 ? $"{c.Header}:" : $"{c.Header} {op}",
+                            // A set filter stores VALUES ("true", a Guid); the chip has to print the
+                            // LABEL the user ticked. Shown live as `Order Blockage: true` before this --
+                            // the chip repeating the wire format back at the person who chose "Blocked".
+                            Value = isSet
+                                ? (picked!.Count == 1 ? SetLabel(c, picked.First()) : L.Format("Grid_ScopeSelected", L.Number(picked.Count)))
+                                : _filterValues.GetValueOrDefault(c.Key) ?? string.Empty,
+                            c.Header
+                        };
+                    })
+                    .ToList();
+            }
+            @if (scopeChips.Count > 0)
+            {
+                <div class="rg-scope">
+                    <span class="rg-scope-label">@L["Grid_ScopeFilteredBy"]</span>
+                    @foreach (var chip in scopeChips)
+                    {
+                        <span class="rg-scope-chip">
+                            <span class="rg-scope-chip-col">@chip.Term</span>
+                            <span class="rg-scope-chip-val">@chip.Value</span>
+                            <button type="button" class="rg-scope-chip-x" data-rg-clear="@chip.Key"
+                                    aria-label="@L.Format("Grid_ScopeRemoveFilter", chip.Header)">
+                                <span class="rg-ico rg-ico-close" aria-hidden="true"></span>
+                            </button>
+                        </span>
+                    }
+                    <button type="button" class="rg-scope-clear" data-rg-scope-clearall>@L["Filter_ClearAll"]</button>
+                </div>
+            }
+
+            @* FOCUSABLE ON PURPOSE. Chrome only auto-focuses a scroll container that has NO focusable
+               children; this one has a sort button in most headers, so it never entered the tab order and
+               a keyboard user could not scroll it. Columns whose cells contain no links -- dates, counts,
+               plain text -- were therefore unreachable: measured 577px of table hidden on a real page.
+               tabindex + role + name is the standard scrollable-region remedy. *@
+            <div id="@(Id)-scroll" class="rg-scrollwrap" tabindex="0" role="region" aria-label="@L["Grid_ScrollRegion"]">
                 <table style="min-width:@(tableMinWidth)px">
                     <colgroup>
                         @if (RowReorder)
@@ -224,7 +295,13 @@
                             var resizable = col.Pinned != "right";
                             var sortable = col.IsBound && col.Sortable;
                             var thStyle = col.Width is { } w ? $"width:{w}px" : col.MinWidth is { } mw ? $"min-width:{mw}px" : null;
+                            @* aria-sort states the CURRENT sort; the button below states what a click
+                               will DO. Split that way on purpose: a screen-reader user asking "how is this
+                               table sorted" is asking the column, and a user deciding whether to press is
+                               asking the control. Omitted (not "none") on unsorted columns, which is what
+                               the spec's default already means. *@
                             <th scope="col" data-rg-col="@col.Key"
+                                aria-sort="@(isSorted ? (sortDir == "asc" ? "ascending" : "descending") : null)"
                                 class="@AlignClass(col.Align ?? (col.Filter == GridFilterType.Number ? "right" : null)) @(reorderable ? "rg-reorder" : null) @col.CssClass"
                                 draggable="@(reorderable ? "true" : "false")"
                                 data-rg-min="@(resizable ? (col.MinWidth ?? 60).ToString() : null)"
@@ -234,7 +311,15 @@
                                     {
                                         <button type="button" class="rg-sort" hx-post="@_endpoints.Region"
                                                 hx-vals="@($"{{\"sort\":\"{col.Key}\",\"dir\":\"{nextDir}\",\"page\":\"1\"}}")">
-                                            <span>@col.Header</span>
+                                            @* The visible label stays the START of the accessible name, so
+                                               voice control ("click Customer Code") still matches, and the
+                                               action is appended for anyone who cannot see the arrow.
+                                               The two spans are ADJACENT in source on purpose: a newline
+                                               between them becomes a text node and the name comes out as
+                                               "Customer Code , sort ascending" with a space before the
+                                               comma, which accessible-name computation collapses but does
+                                               not remove. *@
+                                            <span>@col.Header</span><span class="rg-sr-only">, @(nextDir == "asc" ? L["Grid_SortAscending"] : L["Grid_SortDescending"])</span>
                                             @if (isSorted)
                                             {
                                                 <span class="rg-ico rg-arrow @(sortDir == "asc" ? "rg-ico-sort-asc" : "rg-ico-sort-desc")"></span>
@@ -251,7 +336,8 @@
                                     }
                                     @if (HasPopup(col))
                                     {
-                                        <button type="button" class="rg-funnel @(isActive ? "active" : "")" data-rg-toggle="@col.Key" aria-label="Filter @col.Header" title="Filter">
+                                        <button type="button" class="rg-funnel @(isActive ? "active" : "")" data-rg-toggle="@col.Key" aria-label="Filter @col.Header" title="Filter"
+                                                aria-haspopup="true" aria-expanded="false" aria-controls="@(Id)-pop-@col.Key">
                                             <span class="rg-ico rg-ico-filter"></span>
                                         </button>
                                     }
@@ -383,7 +469,18 @@
                                         <input type="search" class="rg-pop-set-search" data-rg-set-search
                                                placeholder="Search…" autocomplete="off" aria-label="Search @col.Header options"/>
                                     }
-                                    <div class="rg-pop-set">
+                                    @* TWO VALUES MEANS ONE CHOICE. A boolean column has exactly two
+                                       possible states, so ticking both is provably identical to no filter
+                                       at all -- the control offers a combination that cannot mean
+                                       anything. Marked here and enforced in FilterPopups.ts, where
+                                       checking one unchecks the other; clicking the checked one again
+                                       still clears it, which a radio group could not do.
+
+                                       BOOLEAN ONLY, deliberately. A two-option TEXT set is not the same
+                                       thing: its options can be a subset of the real domain (a user's two
+                                       permitted sales organisations out of forty), and there selecting
+                                       both is a genuine constraint. *@
+                                    <div class="rg-pop-set" data-rg-set-exclusive="@(col.SetDataType == GridFilterDataType.Boolean && col.SetOptions!.Count == 2 ? "true" : null)">
                                         @foreach (var option in col.SetOptions!)
                                         {
                                             <label class="rg-pop-check">
@@ -435,7 +532,9 @@
                 }
                 else
                 {
-                <div class="rg-foot-cell">
+                @* A <label> wrapping the control, not a floating <span>: no id to generate, no id to
+                   collide with a second grid on the same page, and the association cannot drift. *@
+                <label class="rg-foot-cell">
                     <span>Page Size:</span>
                     <select name="pageSize" class="rg-select" hx-post="@_endpoints.Region" hx-trigger="change" hx-vals='{"page":"1"}'>
                         @foreach (var size in PageSizeOptions)
@@ -443,9 +542,14 @@
                             <option value="@size" selected="@(size == state.PageSize)">@size</option>
                         }
                     </select>
-                </div>
+                </label>
 
-                <span class="rg-nums">@L.Format("Grid_Range", L.Number(from), L.Number(to), L.Number(prepared.TotalCount))</span>
+                @* The one line that says how much data you are looking at, so it is the one line worth
+                   announcing when a filter or a page changes it. LIMIT, stated honestly: htmx swaps this
+                   whole region, so the live region is re-inserted rather than mutated, and assistive
+                   technologies differ on whether they announce that. It is a real improvement over zero
+                   live regions and it is not a guarantee; a stable node outside the swap would be. *@
+                <span class="rg-nums" role="status">@L.Format("Grid_Range", L.Number(from), L.Number(to), L.Number(prepared.TotalCount))</span>
 
                 <div class="rg-pager">
                     <button type="button" class="rg-nav" title="@L["Grid_FirstPage"]" disabled="@prevDisabled" hx-post="@_endpoints.Region" hx-vals='{"page":"1"}'>
@@ -496,6 +600,10 @@
     [Parameter]
     public bool VirtualScroll { get; set; }
 
+    /// <summary>See <see cref="RaptorGrid{TRow}.FitViewport"/>. Rendered as <c>data-rg-fit="false"</c> only when off.</summary>
+    [Parameter]
+    public bool FitViewport { get; set; } = true;
+
     /// <summary>Drag-and-drop row reordering: a leading handle cell per row; drops post to the grid's
     /// <c>/reorder</c> endpoint (Razor Pages: <c>OnPost{Handler}ReorderAsync</c>).</summary>
     [Parameter]
@@ -529,6 +637,29 @@
     private bool _deferred;
     private bool _block;
     private Dictionary<string, RaptorColumnSpec<TRow>> _specByKey = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// The operator as a word, for a scope chip. Falls back to the raw key rather than to a guess: an
+    /// unknown operator printed verbatim is odd, and an operator silently shown as "contains" is wrong.
+    /// The default operator prints nothing at all -- "Customer Code contains ZZZ" reads as a sentence,
+    /// "Country equals TR" does not read better than "Country: TR".
+    /// </summary>
+    /// <summary>
+    /// The label a set option was offered under, for a scope chip. Falls back to the raw value when the
+    /// options cannot be resolved — a Guid in a chip is unhelpful but honest, and inventing a word for it
+    /// would be worse.
+    /// </summary>
+    private static string SetLabel(GridColumn<TRow> column, string value) =>
+        column.SetOptions?.FirstOrDefault(o => string.Equals(o.Value, value, StringComparison.OrdinalIgnoreCase))?.Label ?? value;
+
+    private static string OpLabel(GridColumn<TRow> column, string? opKey)
+    {
+        var key = string.IsNullOrEmpty(opKey) ? GridFilterOps.DefaultKey(column.Filter) : opKey;
+        if (string.Equals(key, GridFilterOps.DefaultKey(column.Filter), StringComparison.OrdinalIgnoreCase))
+            return string.Empty;
+        var match = GridFilterOps.Options(column.Filter).FirstOrDefault(o => string.Equals(o.Key, key, StringComparison.OrdinalIgnoreCase));
+        return (match.Label ?? key).ToLowerInvariant();
+    }
+
     private IReadOnlyDictionary<string, string> _filterValues = new Dictionary<string, string>();
     private IReadOnlyDictionary<string, string> _filterOps = new Dictionary<string, string>();
     private IReadOnlyDictionary<string, IReadOnlyCollection<string>> _setSelections = new Dictionary<string, IReadOnlyCollection<string>>();
